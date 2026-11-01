@@ -80,13 +80,11 @@ export const useShellStore = create(
 
       // ── Modos inteligentes ───────────────────────────────────────
       mode: 'smart', // work | gamer | smart
-      setMode: (m) =>
-        set((s) => {
-          if (m === 'gamer') return { mode: m, dockApps: ['files', 'terminal', 'tasks', 'notes', 'settings'] }
-          if (m === 'work')
-            return { mode: m, dockApps: ['files', 'calculator', 'notes', 'tasks', 'settings', 'studio'] }
-          return { mode: m, dockApps: DEFAULT_DOCK }
-        }),
+      setMode: (m) => {
+        if (m === 'gamer') set({ mode: m, dockApps: ['files', 'terminal', 'tasks', 'notes', 'settings'] })
+        else if (m === 'work') set({ mode: m, dockApps: ['files', 'calculator', 'notes', 'tasks', 'settings', 'studio'] })
+        else set({ mode: m, dockApps: DEFAULT_DOCK })
+      },
 
       // ── Áreas de trabalho virtuais ───────────────────────────────
       desktops: ['Principal'],

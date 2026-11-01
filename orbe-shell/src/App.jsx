@@ -91,7 +91,7 @@ function BootScreen() {
 
 function DeskMenu({ menu, onClose }) {
   const s = useShellStore.getState()
-  const act = (fn) => () => { fn && fn(); onClose() }
+  const act = (fn) => () => { if (fn) fn(); onClose() }
   return (
     <motion.div
       className="menu glass-strong desk-menu"

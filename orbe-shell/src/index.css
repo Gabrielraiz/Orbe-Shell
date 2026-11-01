@@ -91,6 +91,12 @@ input, textarea { font-family: inherit; color: var(--text); }
 .cc-tile:hover { background: rgba(255, 255, 255, 0.1); }
 .cc-tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .cc-modes { display: flex; gap: 6px; margin-top: 12px; }
+.cc-volume { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 4px 2px; font-size: 12px; }
+.cc-vol-btn { width: 30px; height: 30px; border-radius: 9px; background: rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: center; transition: 0.2s; color: var(--text); }
+.cc-vol-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.cc-vol-btn.on { color: var(--accent); }
+.cc-volume input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; }
+.cc-vol-num { min-width: 34px; text-align: right; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .cc-modes button { flex: 1; padding: 8px; border-radius: 10px; font-size: 12px; background: rgba(255, 255, 255, 0.06); color: var(--text-dim); transition: 0.2s; }
 .cc-modes button.on { background: linear-gradient(120deg, var(--accent), var(--accent2)); color: #0a0e18; font-weight: 600; }
 .cc-studio { width: 100%; margin-top: 12px; }
