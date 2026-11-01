@@ -42,8 +42,8 @@ export function Glyph({ name, size = 26 }) {
 }
 
 // Ícones de UI genéricos
-export function Icon({ name, size = 16, color = 'currentColor', strokeWidth = 1.8 }) {
-  const p = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' }
+export function Icon({ name, size = 16, color = 'currentColor', strokeWidth = 1.8, style }) {
+  const p = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round', style }
   switch (name) {
     case 'search': return <svg {...p}><circle cx="11" cy="11" r="6.5" /><path d="m16 16 5 5" /></svg>
     case 'close': return <svg {...p}><path d="M6 6 18 18M18 6 6 18" /></svg>

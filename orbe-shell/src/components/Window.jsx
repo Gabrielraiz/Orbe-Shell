@@ -183,12 +183,63 @@ function TasksPanel() {
   )
 }
 
+// Avaliador de expressões aritméticas seguro (sem eval/Function):
+// tokenizer + parser recursivo com precedência. Suporta + - * / ( ) e decimais.
+function evalExpr(src) {
+  let i = 0
+  const s = src.replace(/\s+/g, '')
+  const peek = () => s[i]
+  const eat = (c) => { if (peek() === c) { i++; return true } return false }
+  function parseNum() {
+    const start = i
+    while (i < s.length && /[0-9.]/.test(s[i])) i++
+    if (start === i) throw new Error('num')
+    const n = Number(s.slice(start, i))
+    if (!Number.isFinite(n)) throw new Error('num')
+    return n
+  }
+  function parseFactor() {
+    if (eat('-')) return -parseFactor()
+    if (eat('+')) return parseFactor()
+    if (eat('(')) { const v = parseExpr(); if (!eat(')')) throw new Error('paren'); return v }
+    return parseNum()
+  }
+  function parseTerm() {
+    let v = parseFactor()
+    for (;;) {
+      const c = peek()
+      if (c === '*' || c === '/') { i++; const r = parseFactor(); v = c === '*' ? v * r : v / r }
+      else return v
+    }
+  }
+  function parseExpr() {
+    let v = parseTerm()
+    for (;;) {
+      if (eat('+')) v += parseTerm()
+      else if (eat('-')) v -= parseTerm()
+      else return v
+    }
+  }
+  const out = parseExpr()
+  if (i !== s.length) throw new Error('fim')
+  return out
+}
+
 function CalcPanel() {
   const [v, setV] = useState('0')
   const press = (k) => {
     if (k === 'C') return setV('0')
-    if (k === '=') { try { setV(String(Function(`return (${v.replace(/×/g, '*').replace(/÷/g, '/')})`)())) } catch { setV('Erro') } return }
-    setV(v === '0' || /Erro/.test(v) ? k : v + k)
+    if (k === '⌫') return setV(v.length > 1 ? v.slice(0, -1) : '0')
+    if (k === '=') {
+      try {
+        const normalized = v.replace(/×/g, '*').replace(/÷/g, '/')
+        const r = evalExpr(normalized)
+        setV(String(Math.round(r * 1e10) / 1e10))
+      } catch { setV('Erro') }
+      return
+    }
+    if (/Erro/.test(v)) return setV(k)
+    setV(v === '0' && k !== '.' ? k : v + k)
   }
   const keys = ['C', '÷', '×', '⌫', '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '=', '0', '.', '(', ')']
   return (
