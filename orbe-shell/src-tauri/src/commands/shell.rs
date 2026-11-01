@@ -59,7 +59,7 @@ pub fn set_explorer_fallback(enable: bool) -> R<String> {
         if enable {
             // Guarda o shell atual ANTES de alterar (para rollback real).
             let cur = run_reg(&["query", key, "/v", "Shell"]);
-            let prev = extract_reg_value(&cur).unwrap_or_else(|| "explorer.exe".into());
+            let prev = extract_reg_value(cur.as_str()).unwrap_or_else(|| "explorer.exe".into());
             let _ = std::fs::write(config_backup_path()?, &prev);
             run_reg(&["add", key, "/v", "Shell", "/t", "REG_SZ", "/d", &exe, "/f"])?;
             return Ok(format!(

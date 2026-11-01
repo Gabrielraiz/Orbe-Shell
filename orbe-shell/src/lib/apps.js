@@ -71,3 +71,18 @@ export function fromNative(entry) {
 
 // Dock padrão: ferramentas internas sempre funcionais no Windows e Linux
 export const DEFAULT_DOCK = ['files', 'terminal', 'tasks', 'calculator', 'notes', 'settings', 'studio']
+
+// Resolve qualquer id de aplicativo (interno "files" ou nativo "sys:xxx").
+// `nativeApps` é a lista carregada do SO em runtime; sem ela, só internos.
+export function findAppById(id, nativeApps = []) {
+  if (INTERNAL_APPS[id]) return INTERNAL_APPS[id]
+  if (typeof id === 'string' && id.startsWith('sys:')) {
+    return nativeApps.find((a) => a.id === id) || null
+  }
+  return null
+}
+
+// Lista completa para busca/recentes: apps reais + internos.
+export function allApps(nativeApps = []) {
+  return [...Object.values(INTERNAL_APPS), ...nativeApps]
+}

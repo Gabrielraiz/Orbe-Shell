@@ -51,6 +51,12 @@ export const useShellStore = create(
           const list = await appCatalog()
           const ui = list.map((e) => ({ ...fromNative(e), native: e }))
           set({ nativeApps: ui, nativeStatus: 'ok' })
+          // Dock padrão enriquecido: se o usuário nunca personalizou, inclui apps reais populares quando existem
+          if (!localStorage.getItem('orbe-dock-customized')) {
+            const wanted = ['notepad', 'msedge', 'calculator', 'explorer']
+            const extra = ui.filter((a) => wanted.some((w) => a.nativeId.includes(w))).slice(0, 3).map((a) => a.id)
+            if (extra.length) set({ dockApps: [...DEFAULT_DOCK, ...extra] })
+          }
         } catch (e) {
           get().pushContinuity(`Catálogo de aplicativos indisponível: ${e}`)
           set({ nativeStatus: 'error' })
@@ -62,8 +68,8 @@ export const useShellStore = create(
 
       // ── Dock ─────────────────────────────────────────────────────
       dockApps: DEFAULT_DOCK,
-      dockAdd: (appId) => set((s) => (s.dockApps.includes(appId) ? s : { dockApps: [...s.dockApps, appId] })),
-      dockRemove: (appId) => set((s) => ({ dockApps: s.dockApps.filter((a) => a !== appId) })),
+      dockAdd: (appId) => { localStorage.setItem('orbe-dock-customized', '1'); set((s) => (s.dockApps.includes(appId) ? s : { dockApps: [...s.dockApps, appId] })) },
+      dockRemove: (appId) => { localStorage.setItem('orbe-dock-customized', '1'); set((s) => ({ dockApps: s.dockApps.filter((a) => a !== appId) })) },
       dockReorder: (from, to) =>
         set((s) => {
           const arr = [...s.dockApps]

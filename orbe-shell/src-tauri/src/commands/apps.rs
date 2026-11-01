@@ -61,33 +61,31 @@ fn read_lnk(path: &Path) -> Option<(String, String)> {
     if !has_linkinfo {
         return None;
     }
-    off += 4; // LinkInfoSize
-    let _version = off + 4;
-    let lflags = u32::from_le_bytes(bytes[off + 4..off + 8].try_into().ok()?);
-    let mut name_off = 0u16;
-    let common = off + 0x14;
-    if lflags & 0x01 != 0 {
-        name_off = u16::from_le_bytes(bytes[common..common + 2].try_into().ok()?);
+    // Estrutura LINK_INFO ([MS-SHLLINK] 2.4.1), começando em `off`:
+    // [LinkInfoSize(4)][Version(4)][Flags(4)][VolumeIDSize(4)][VolumeID(..)]
+    // [LocalBasePathSize(2)][CommonDataOffset(2)][..][LocalBasePath (ANSI, NUL)]
+    let li = off;
+    let local_len = u16::from_le_bytes(bytes[li + 0x10..li + 0x12].try_into().ok()?) as usize;
+    if local_len == 0 {
+        return None;
     }
-    let base = off;
-    let path_off = u16::from_le_bytes(bytes[base + 0x10..base + 0x12].try_into().ok()?) as usize;
-    let path_len_field = u16::from_le_bytes(bytes[base + 0x0C..base + 0x0E].try_into().ok()?) as usize;
-    let target_start = base + path_off;
-    let raw = &bytes[target_start..target_start + path_len_field];
+    // LocalBasePath inicia após VolumeID: offset 0x14 relativo a LinkInfo.
+    let target_start = li + 0x14;
+    if target_start + local_len > bytes.len() {
+        return None;
+    }
+    let raw = &bytes[target_start..target_start + local_len];
     let target = String::from_utf8_lossy(raw).trim_end_matches('\0').to_string();
-    let display = std::fs::File::open(path)
-        .ok()
-        .and_then(|_| {
-            // Nome amigável = nome do arquivo .lnk
-            Path::new(path)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-        })
+    // Nome amigável = nome do arquivo .lnk
+    let display = Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| target.clone());
     Some((display, target))
 }
 
 #[cfg(windows)]
+#[tauri::command]
 pub fn app_catalog() -> R<Vec<AppEntry>> {
     let mut out = Vec::new();
     for dir in windows_start_dirs() {
@@ -136,6 +134,7 @@ fn walk(dir: PathBuf, depth: u8) -> Vec<PathBuf> {
 
 // ── Linux/Unix: .desktop reais ────────────────────────────────────
 #[cfg(not(windows))]
+#[tauri::command]
 pub fn app_catalog() -> R<Vec<AppEntry>> {
     let mut dirs = vec![PathBuf::from("/usr/share/applications"), PathBuf::from("/usr/local/share/applications")];
     if let Some(home) = std::env::var_os("HOME") {
