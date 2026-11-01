@@ -72,6 +72,8 @@ input, textarea { font-family: inherit; color: var(--text); }
 .mb-item:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
 .mb-item.bold { color: var(--text); font-weight: 600; }
 .mb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.mb-item { display: inline-flex; align-items: center; gap: 6px; }
+.mb-batt-num { font-size: 12px; color: var(--text-dim); }
 
 /* ── Pílula de áreas de trabalho ─────────────────────── */
 .desk-pill {
