@@ -108,15 +108,19 @@ test('versao sincronizada em todos os arquivos', () => {
   const pkg = JSON.parse(readFileSync(APP_ROOT + '/package.json', 'utf8'))
   const tauriConf = JSON.parse(readFileSync(APP_ROOT + '/src-tauri/tauri.conf.json', 'utf8'))
   const cargo = readFileSync(APP_ROOT + '/src-tauri/Cargo.toml', 'utf8')
-  // Formato canônico: X.Y.Z.B (4 números). package.json/apps.js usam idêntico.
-  assert.match(pkg.version, /^\d+\.\d+\.\d+\.\d+$/, 'package.json deve ter versão X.Y.Z.B')
-  assert.equal(pkg.version, VERSION)
-  // Rust aceita apenas semver X.Y.Z ou X.Y.Z+build — o 4º número vira metadado '+B'.
-  const parts = pkg.version.split('.')          // ['X','Y','Z','B']
+  // Formato canônico do projeto: X.Y.Z.B, declarado em src/lib/apps.js (VERSION).
+  assert.match(VERSION, /^\d+\.\d+\.\d+\.\d+$/, 'apps.js deve expor versão X.Y.Z.B')
+  // package.json e tauri.conf.json exigem semver ESTREITO (X.Y.Z apenas):
+  // o Tauri CLI rejeita 4 componentes com "must be a semver string".
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/, 'package.json deve ter versão estrita X.Y.Z')
+  assert.match(tauriConf.version, /^\d+\.\d+\.\d+$/, 'tauri.conf.json deve ter versão estrita X.Y.Z')
+  const parts = VERSION.split('.')              // ['X','Y','Z','B']
   const base = parts.slice(0, 3).join('.')      // 'X.Y.Z'
   const buildNum = parts[3]                     // 'B'
-  assert.equal(tauriConf.version, base, 'tauri.conf.json deve conter a base X.Y.Z')
-  assert.ok(cargo.includes(`version = "${base}+${buildNum}"`), 'Cargo.toml deve conter X.Y.Z+B')
+  assert.equal(pkg.version, base, 'package.json deve ser a base de VERSION')
+  assert.equal(tauriConf.version, base, 'tauri.conf.json deve ser a base de VERSION')
+  // Cargo.toml aceita X.Y.Z.B como "extra version": mantém a versão completa.
+  assert.ok(cargo.includes(`version = "${base}.${buildNum}"`), 'Cargo.toml deve conter X.Y.Z.B')
 })
 
 // ── Comparacao de versoes usada pela Central de Atualizacao ──────────────

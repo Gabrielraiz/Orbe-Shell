@@ -1,4 +1,4 @@
-# Orbe Shell 1.1.0.2
+# Orbe Shell 1.1.0.4
 
 Aplicativo nativo de shell para Windows construído com **Tauri 2 (Rust)** e **React 19**.
 Substitui a experiência visual do desktop por um ambiente Liquid Glass completo — Dock,
@@ -41,7 +41,7 @@ testes unitários, oxlint, vite build, cargo check e grava um relatório `.log` 
 
 ## Os 12 pilares — agora como funcionalidades reais
 
-| # | Pilar | Status em 1.1.0.2 |
+| # | Pilar | Status em 1.1.0.4 |
 |---|-------|-------------------|
 | 1 | Liquid Glass Premium | Escuro translúcido, blur real, cores dinâmicas extraídas do papel de parede ativo |
 | 2 | Animações fluidas | Springs do Framer Motion, efeito Genie ao minimizar, velocidade global ajustável no Studio |
@@ -90,5 +90,5 @@ Stack: **React 19 · Vite · Zustand · Framer Motion · Tauri 2 · Rust (window
 - Rollback assinado de atualizações e canais beta/experimental com checksum
 - Suporte a toque e gestos; otimizações automáticas por hardware
 
-> Versão 1.1.0.2 — foco: correções de build/lint, sincronização de versão, módulos reais
+> Versão 1.1.0.4 — foco: correções de build/lint, sincronização de versão, módulos reais
 > (volume, calculadora sem eval, explorer, tarefas, update) e script de diagnóstico.

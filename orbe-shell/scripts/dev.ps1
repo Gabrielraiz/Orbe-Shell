@@ -110,48 +110,57 @@ Log "Orbe Shell - Diagnostico iniciado em $(Get-Date)"
 Log "Diretorio: $Root"
 
 # ---------------------------------------------------------------------------
-# 0a) Auto-sync de versao (fonte da verdade: package.json)
-#     Se qualquer arquivo divergir, e corrigido automaticamente ANTES das
-#     verificacoes. Rust exige semver X.Y.Z; o sufixo de build (.N) vira
-#     metadados "+N" no Cargo.toml/tauri.conf.json (validos e ignorados pelo
-#     resolver), mantendo as quatro fontes na mesma versao base.
+# 0a) Auto-sync de versao (fonte da verdade: src/lib/apps.js -> VERSION)
+#     Esquema do projeto: X.Y.Z.N, onde N e o numero de build/revisao.
+#     Os manifestos que exigem semver ESTRITO (package.json e
+#     tauri.conf.json -- o Tauri CLI rejeita 4 componentes com erro
+#     "must be a semver string", e o Cargo rejeita com "unexpected
+#     character '.' after patch version number") recebem apenas X.Y.Z.
+#     O sufixo .N fica visivel na UI (Sobre / Update Center) via apps.js.
+#     Esta secao corrige qualquer divergencia automaticamente antes das
+#     verificacoes e nunca falha por causa do formato.
 # ---------------------------------------------------------------------------
 Section 'Sincronizacao de versao'
-$pkgTxt = Get-Content (Join-Path $Root 'package.json') -Raw
-$pkgV = ($pkgTxt | ConvertFrom-Json).version
-if ($pkgV -notmatch '^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$') {
-    Log "[FALHA] Versao em package.json invalida: '$pkgV' (esperado X.Y.Z ou X.Y.Z.N)."
+$appsFile = Join-Path $Root 'src\lib\apps.js'
+$appsTxt  = Get-Content $appsFile -Raw
+if ($appsTxt -notmatch "VERSION\s*=\s*'(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?'") {
+    Log "[FALHA] Nao encontrei VERSION = 'X.Y.Z[.N]' em src/lib/apps.js."
     $script:Failures++
 } else {
-    $base = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+    $base  = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
     $build = $Matches[4]
-    $semver = if ($build) { "$base+$build" } else { $base }
-    Log "package.json define a versao: $pkgV (semver Rust: $semver)"
+    $full  = if ($build) { "$base.$build" } else { $base }
+    Log "Versao completa (UI): $full | Semver estrito (manifestos): $base"
 
     $cargoFile = Join-Path $Root 'src-tauri\Cargo.toml'
     $confFile  = Join-Path $Root 'src-tauri\tauri.conf.json'
-    $appsFile  = Join-Path $Root 'src\lib\apps.js'
+    $pkgFile   = Join-Path $Root 'package.json'
 
+    # Cargo.toml: primeira linha ^version = "..." (secao [package])
     $cargoTxt = Get-Content $cargoFile -Raw
-    $newCargo = $cargoTxt -replace '(?m)^version\s*=\s*"[^"]+"', "version = `"$semver`""
-    if ($newCargo -ne $cargoTxt) { Set-Content $cargoFile $newCargo -NoNewline -Encoding UTF8; Log '  Cargo.toml atualizado para.' }
+    $newCargo = $cargoTxt -replace '(?m)^version\s*=\s*"[^"]+"', "version = `"$full`""
+    if ($newCargo -ne $cargoTxt) { Set-Content $cargoFile $newCargo -NoNewline -Encoding UTF8; Log '  Cargo.toml -> completa.' }
 
+    # tauri.conf.json: SEMPRE X.Y.Z puro (trava anti-regressao). O Tauri CLI
+    # rejeita 4 componentes com "must be a semver string".
     $confTxt = Get-Content $confFile -Raw
     $newConf = $confTxt -replace '("version"\s*:\s*")[^"]+(")', "`$1$base`$2"
-    if ($newConf -ne $confTxt) { Set-Content $confFile $newConf -NoNewline -Encoding UTF8; Log '  tauri.conf.json atualizado para base.' }
+    if ($newConf -ne $confTxt) { Set-Content $confFile $newConf -NoNewline -Encoding UTF8; Log '  tauri.conf.json -> base.' }
 
-    $appsTxt = Get-Content $appsFile -Raw
-    $newApps = $appsTxt -replace "(VERSION\s*=\s*')[^']+(')", "`${1}$pkgV`${2}"
-    if ($newApps -ne $appsTxt) { Set-Content $appsFile $newApps -NoNewline -Encoding UTF8; Log '  apps.js atualizado para pkg.' }
+    # package.json: sempre X.Y.Z puro (npm exige semver valido)
+    $pkgTxt = Get-Content $pkgFile -Raw
+    $newPkg = $pkgTxt -replace '("version"\s*:\s*")[^"]+(")', "`$1$base`$2"
+    if ($newPkg -ne $pkgTxt) { Set-Content $pkgFile $newPkg -NoNewline -Encoding UTF8; Log '  package.json -> base.' }
 
     # Releitura para confirmacao
-    $okCargo = (Get-Content $cargoFile -Raw) -match [regex]::Escape("`"$semver`"")
-    $okConf  = (Get-Content $confFile -Raw)  -match [regex]::Escape("`"$base`"")
-    $okApps  = (Get-Content $appsFile -Raw)  -match [regex]::Escape("'$pkgV'")
-    if ($okCargo -and $okConf -and $okApps) {
-        Log '[OK] Versoes sincronizadas (package.json = tauri.conf = Cargo.toml = apps.js).'
+    $okCargo = (Get-Content $cargoFile -Raw) -match ('(?m)^version\s*=\s*"' + [regex]::Escape($full) + '"')
+    $okConf  = (Get-Content $confFile  -Raw) -match ('"version"\s*:\s*"' + [regex]::Escape($base) + '"')
+    $okPkg   = (Get-Content $pkgFile   -Raw) -match ('"version"\s*:\s*"' + [regex]::Escape($base) + '"')
+    $okApps  = (Get-Content $appsFile  -Raw) -match [regex]::Escape("'$full'")
+    if ($okCargo -and $okConf -and $okPkg -and $okApps) {
+        Log '[OK] Versoes sincronizadas (apps.js = X.Y.Z.N; manifestos = X.Y.Z).'
     } else {
-        Log "[FALHA] Auto-sync incompleto: cargo=$okCargo conf=$okConf apps=$okApps"
+        Log "[FALHA] Auto-sync incompleto: cargo=$okCargo conf=$okConf pkg=$okPkg apps=$okApps"
         $script:Failures++
     }
 }
@@ -219,6 +228,28 @@ Run-Step 'Build frontend (vite build)' 'npm' @('run', 'build') | Out-Null
 if (Get-Command cargo -ErrorAction SilentlyContinue) {
     Push-Location (Join-Path $Root 'src-tauri')
     Run-Step 'Verificacao Rust (cargo check)' 'cargo' @('check', '--message-format', 'short') | Out-Null
+
+    # Trava de config: valida o tauri.conf.json EXATAMENTE como o Tauri CLI
+    # valida no startup. Se a versao nao for semver estrito X.Y.Z, o erro e
+    # "failed to parse config: `tauri.conf.json > version` must be a semver
+    # string" -- detectado aqui com mensagem de correcao explicita.
+    Section 'Validacao da configuracao Tauri'
+    $confRaw = Get-Content (Join-Path $Root 'src-tauri\tauri.conf.json') -Raw
+    try {
+        $confJson = $confRaw | ConvertFrom-Json
+        if ($confJson.version -notmatch '^\d+\.\d+\.\d+$') {
+            Log "[FALHA] tauri.conf.json tem versao '$($confJson.version)' (esperado X.Y.Z puro)."
+            Log '  * Corrigido automaticamente pela secao de sincronizacao; rode o script novamente.'
+            $script:Failures++
+        } else {
+            Log "[OK] tauri.conf.json: versao semver valida ($($confJson.version))."
+        }
+        if (-not $confJson.identifier) { Log '[FALHA] tauri.conf.json sem identifier.'; $script:Failures++ }
+        else { Log "[OK] identifier: $($confJson.identifier)" }
+    } catch {
+        Log "[FALHA] tauri.conf.json nao e JSON valido: $($_.Exception.Message)"
+        $script:Failures++
+    }
     Pop-Location
 } else {
     Log '[PULADO] cargo nao disponivel - verificacao Rust ignorada neste ambiente.'

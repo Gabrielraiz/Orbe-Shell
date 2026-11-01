@@ -5,7 +5,7 @@
 // a interface mostra apenas as ferramentas internas do próprio shell, que são
 // genuinamente funcionais — nada é inventado.
 
-export const VERSION = '1.1.0.3'
+export const VERSION = '1.1.0.4'
 
 // Ferramentas internas do Orbe (código real, executado dentro do shell)
 export const INTERNAL_APPS = {
@@ -90,7 +90,9 @@ export function allApps(nativeApps = []) {
 // Comparacao de versoes (X.Y.Z ou X.Y.Z.N, com prefixo "v" opcional).
 // Usada pela Central de Atualizacao e validada por testes unitarios.
 export function cmpVer(a, b) {
-  const norm = (s) => String(s).replace(/^v/i, '').split('+')[0].split('.').map((x) => parseInt(x, 10) || 0)
+  // Normaliza: remove prefixo 'v', separa metadados de build ('+N' do semver
+  // Rust) e trata o 4º componente numérico do esquema X.Y.Z.N.
+  const norm = (s) => String(s).replace(/^v/i, '').split('+')[0].split('-')[0].split('.').map((x) => parseInt(x, 10) || 0)
   const pa = norm(a), pb = norm(b)
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const d = (pa[i] || 0) - (pb[i] || 0)
