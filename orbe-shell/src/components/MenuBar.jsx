@@ -5,7 +5,7 @@ import { useShellStore } from '../store/shellStore'
 
 // Barra superior estilo macOS com menu do Orbe à esquerda e relógio à direita.
 export function MenuBar() {
-  const [now, setNow] = useState(new Date())
+  const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000 * 15)
     return () => clearInterval(t)

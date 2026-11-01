@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShellStore } from '../store/shellStore'
-import { APPS, ALL_APPS } from '../lib/apps'
+import { findAppById, allApps, internalApp } from '../lib/apps'
 import { Icon } from './icons/Icons'
 import { AppIcon } from './AppIcon'
 
 // Menu Iniciar adaptável: modos compacto / completo / inteligente,
-// pesquisa integrada, favoritos, widgets e transições animadas.
+// pesquisa integrada (apps reais do SO + ferramentas internas), favoritos,
+// recentes reais e transições animadas.
 export function StartMenu() {
   const open = useShellStore((s) => s.startOpen)
   const close = useShellStore((s) => s.closeStart)
@@ -14,18 +15,30 @@ export function StartMenu() {
   const setMode = useShellStore((s) => s.setStartMode)
   const openApp = useShellStore((s) => s.openApp)
   const shellMode = useShellStore((s) => s.mode)
+  const nativeApps = useShellStore((s) => s.nativeApps)
+  const windows = useShellStore((s) => s.windows)
   const [q, setQ] = useState('')
 
   const inputRef = useRef(null)
-  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 120); else setQ('') }, [open])
+  useEffect(() => {
+    if (open) {
+      const t = setTimeout(() => inputRef.current?.focus(), 120)
+      return () => clearTimeout(t)
+    }
+  }, [open])
 
   const results = useMemo(() => {
-    const base = q ? ALL_APPS.filter((a) => a.name.toLowerCase().includes(q.toLowerCase())) : null
-    return base
-  }, [q])
+    const term = q.trim().toLowerCase()
+    if (!term) return null
+    return allApps(nativeApps).filter((a) => a.name.toLowerCase().includes(term)).slice(0, 40)
+  }, [q, nativeApps])
 
-  const favorites = shellMode === 'gamer' ? ['gamepad', 'music', 'edge', 'studio'] : shellMode === 'work' ? ['editor', 'notes', 'mail', 'calendar'] : ['explorer', 'edge', 'settings', 'studio']
-  const recent = ['studio', 'terminal', 'photos', 'notes']
+  // Favoritos por perfil — apenas aplicativos que realmente existem
+  const favIds = shellMode === 'gamer' ? ['terminal', 'tasks', 'notes', 'studio'] : shellMode === 'work' ? ['files', 'notes', 'calculator', 'settings'] : ['files', 'terminal', 'tasks', 'settings']
+  const favorites = [...nativeApps.slice(0, 8), ...favIds.map((id) => internalApp(id))].filter(Boolean)
+    .slice(0, 12)
+  // Recentes reais: apps abertos nesta sessão (janelas vivas ou minimizadas)
+  const recent = [...new Set(windows.map((w) => w.appId))].map((id) => findAppById(id, nativeApps)).filter(Boolean).slice(0, 6)
 
   return (
     <AnimatePresence>
@@ -65,25 +78,22 @@ export function StartMenu() {
                   <section>
                     <h4>Favoritos</h4>
                     <div className="start-grid">
-                      {favorites.map((id) => {
-                        const a = APPS[id]
-                        return (
-                          <button key={id} className="start-tile" onClick={() => { openApp(id); close() }}>
-                            <AppIcon app={a} size={mode === 'smart' ? 42 : 38} radius={12} />
-                            <span>{a.name}</span>
-                          </button>
-                        )
-                      })}
+                      {favorites.map((a) => (
+                        <button key={a.id} className="start-tile" onClick={() => { openApp(a.id); close() }}>
+                          <AppIcon app={a} size={mode === 'smart' ? 42 : 38} radius={12} />
+                          <span>{a.name}</span>
+                        </button>
+                      ))}
                     </div>
                   </section>
                 )}
-                {mode === 'full' && (
+                {mode === 'full' && recent.length > 0 && (
                   <section>
                     <h4>Recentes</h4>
                     <div className="start-list">
-                      {recent.map((id) => (
-                        <button key={id} className="start-row" onClick={() => { openApp(id); close() }}>
-                          <AppIcon app={APPS[id]} size={26} radius={7} /><span>{APPS[id].name}</span>
+                      {recent.map((a) => (
+                        <button key={a.id} className="start-row" onClick={() => { openApp(a.id); close() }}>
+                          <AppIcon app={a} size={26} radius={7} /><span>{a.name}</span>
                         </button>
                       ))}
                     </div>
@@ -105,10 +115,10 @@ export function StartMenu() {
             )}
 
             <footer className="start-foot">
-              <button className="foot-user"><span className="avatar">O</span>Usuário Orbe</button>
+              <button className="foot-user" onClick={() => { openApp('settings'); close() }}><span className="avatar">O</span>Configurações do Sistema</button>
               <div className="foot-actions">
-                <button title="Bloquear" onClick={() => { close(); useShellStore.getState().pushContinuity('Sessão bloqueada (protótipo).') }}><Icon name="lock" size={16} /></button>
-                <button title="Suspender" onClick={() => { close(); useShellStore.getState().emergencyRecovery() }}><Icon name="power" size={16} /></button>
+                <button title="Bloquear tela (Windows+L)" onClick={() => { close(); useShellStore.getState().lockWorkstation() }}><Icon name="lock" size={16} /></button>
+                <button title="Recuperação de emergência" onClick={() => { close(); useShellStore.getState().emergencyRecovery() }}><Icon name="power" size={16} /></button>
               </div>
             </footer>
           </motion.div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShellStore } from '../store/shellStore'
-import { APPS } from '../lib/apps'
+import { findAppById } from '../lib/apps'
 import { AppIcon } from './AppIcon'
 
 // Dock flutuante inteligente: ampliação por proximidade do mouse, ocultação
@@ -17,7 +17,6 @@ export function Dock() {
   const dockRemove = useShellStore((s) => s.dockRemove)
   const dockReorder = useShellStore((s) => s.dockReorder)
   const toggleStart = useShellStore((s) => s.toggleStart)
-  const pushContinuity = useShellStore((s) => s.pushContinuity)
 
   const [mouseX, setMouseX] = useState(null)
   const [hovered, setHovered] = useState(!autoHide)
@@ -91,7 +90,9 @@ export function Dock() {
 }
 
 function DockContext({ ctx, onClose, dockRemove, openApp }) {
-  const app = APPS[ctx.appId]
+  const nativeApps = useShellStore((s) => s.nativeApps)
+  const app = findAppById(ctx.appId, nativeApps)
+  if (!app) return null
   const act = (fn) => () => { fn(); onClose() }
   return (
     <motion.div

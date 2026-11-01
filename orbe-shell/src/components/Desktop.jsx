@@ -37,24 +37,31 @@ export function Desktop() {
   })
   const [drag, setDrag] = useState(null)
 
+  // Geometria do arrasto em ref: o efeito global de ponteiro lê valores
+  // atuais (sem estado obsoleto) e só depende da presença do arrasto.
+  const dragRef = useRef(null)
   useEffect(() => { localStorage.setItem('orbe-desktop-icons', JSON.stringify(pos)) }, [pos])
 
   const startMove = (id, e) => {
     e.preventDefault()
-    setDrag({ id, sx: e.clientX, sy: e.clientY, ox: pos[id]?.x ?? 26, oy: pos[id]?.y ?? 60, moved: false })
+    const d = { id, sx: e.clientX, sy: e.clientY, ox: pos[id]?.x ?? 26, oy: pos[id]?.y ?? 60, moved: false }
+    dragRef.current = d
+    setDrag(d)
   }
   useEffect(() => {
     if (!drag) return
     const move = (ev) => {
-      const dx = ev.clientX - drag.sx, dy = ev.clientY - drag.sy
-      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true
-      setPos((p) => ({ ...p, [drag.id]: { x: Math.max(0, drag.ox + dx), y: Math.max(44, drag.oy + dy) } }))
+      const d = dragRef.current
+      if (!d) return
+      const dx = ev.clientX - d.sx, dy = ev.clientY - d.sy
+      if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true
+      setPos((p) => ({ ...p, [d.id]: { x: Math.max(0, d.ox + dx), y: Math.max(44, d.oy + dy) } }))
     }
-    const up = () => setDrag(null)
+    const up = () => { dragRef.current = null; setDrag(null) }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
-  }, [drag?.id])
+  }, [drag])
 
   const activate = async (ic) => {
     if (drag?.moved) return
@@ -94,7 +101,7 @@ export function Widgets() {
 }
 
 function ClockWidget() {
-  const [now, setNow] = useState(new Date())
+  const [now, setNow] = useState(() => new Date())
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
   return (
     <motion.div className="widget glass" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
@@ -170,7 +177,7 @@ function MusicWidget() {
       setTrack({ path: file, url: convertFileSrc(file) })
       setPlaying(false); setErr(null)
     } catch (e) {
-      setErr('Seletor de arquivo exige o app nativo.')
+      setErr(`Seletor de arquivo indisponível no navegador (${e}). Use o app nativo.`)
     }
   }
 
@@ -196,11 +203,13 @@ function MusicWidget() {
 }
 
 // Monitor REAL: perf_stats do backend (CPU delta + memória física)
+const WEB_PERF_ERR = 'Dados de desempenho exigem o app nativo.'
+
 function MonitorWidget() {
   const [perf, setPerf] = useState(null)
-  const [err, setErr] = useState(null)
+  const [err, setErr] = useState(() => (native.IS_TAURI ? null : WEB_PERF_ERR))
   useEffect(() => {
-    if (!native.IS_TAURI) { setErr('Dados de desempenho exigem o app nativo.'); return }
+    if (!native.IS_TAURI) return
     let alive = true
     const tick = () => native.perfStats().then((p) => alive && setPerf(p)).catch((e) => alive && setErr(String(e)))
     tick()

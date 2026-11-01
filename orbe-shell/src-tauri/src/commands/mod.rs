@@ -46,6 +46,28 @@ impl From<windows::core::Error> for ShellError {
     }
 }
 
+// Bloqueia a estação de trabalho usando a API oficial LockWorkStation().
+#[tauri::command]
+pub fn lock_workstation() -> R<String> {
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        extern "system" {
+            fn LockWorkStation() -> i32;
+        }
+        let ok = unsafe { LockWorkStation() };
+        if ok != 0 {
+            Ok("Estação bloqueada.".into())
+        } else {
+            Err(ShellError("O Windows recusou o bloqueio da estação.".into()))
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Err(ShellError("Bloqueio de estação disponível apenas no Windows.".into()))
+    }
+}
+
 impl Serialize for ShellError {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.0)

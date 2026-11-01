@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DEFAULT_DOCK, INTERNAL_APPS, fromNative } from '../lib/apps'
 import { wallpaperById } from '../lib/wallpapers'
-import { appCatalog, launchApp, IS_TAURI } from '../lib/native'
+import { appCatalog, launchApp, IS_TAURI, lockWorkstation as nativeLock } from '../lib/native'
 
 let nextId = 100
 const uid = () => `w${nextId++}`
@@ -232,6 +232,16 @@ export const useShellStore = create(
           studioOpen: false,
         })
         get().pushContinuity('Recuperação de emergência concluída — estado da interface restaurado.')
+      },
+
+      // Bloqueio real da estação (LockWorkStation no Windows)
+      lockWorkstation: async () => {
+        try {
+          const msg = await nativeLock()
+          get().pushContinuity(msg)
+        } catch (e) {
+          get().pushContinuity(`Bloqueio indisponível: ${e}`)
+        }
       },
     }),
     {
