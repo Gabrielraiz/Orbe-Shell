@@ -2,6 +2,7 @@
 // Cobre a logica pura do frontend, sem depender de Tauri nem de DOM.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 // ── Avaliador da Calculadora (replica exatamente a logica de Window.jsx) ──
 function evalExpr(src) {
@@ -100,8 +101,14 @@ test('dock padrao contem apenas ferramentas internas funcionais', () => {
   for (const id of DEFAULT_DOCK) assert.ok(INTERNAL_APPS[id], `dock aponta para app inexistente: ${id}`)
 })
 
-test('versao atualizada para 1.1.0', () => {
-  assert.equal(VERSION, '1.1.0')
+test('versao sincronizada em todos os arquivos', () => {
+  const APP_ROOT = new URL('..', import.meta.url).pathname
+  const pkg = JSON.parse(readFileSync(APP_ROOT + 'package.json', 'utf8'))
+  const tauriConf = JSON.parse(readFileSync(APP_ROOT + 'src-tauri/tauri.conf.json', 'utf8'))
+  const cargo = readFileSync(APP_ROOT + 'src-tauri/Cargo.toml', 'utf8')
+  assert.equal(pkg.version, VERSION)
+  assert.equal(tauriConf.version, VERSION)
+  assert.ok(cargo.includes(`version = "${VERSION}"`))
 })
 
 // ── Comparacao de versoes usada pela Central de Atualizacao ──────────────

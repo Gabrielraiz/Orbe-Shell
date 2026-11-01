@@ -10,7 +10,11 @@ function VolumeSlider() {
   const [audio, setAudio] = useState(null)
   const [err, setErr] = useState(null)
   useEffect(() => {
-    if (!native.IS_TAURI) { setErr('Volume disponível apenas no app nativo.'); return }
+    if (!native.IS_TAURI) {
+      // Adiado para o proximo tick: evita render em cascata na montagem.
+      const t = setTimeout(() => setErr('Volume disponível apenas no app nativo.'), 0)
+      return () => clearTimeout(t)
+    }
     let alive = true
     native.audioState().then((a) => { if (alive) setAudio(a) }).catch((e) => setErr(String(e)))
     return () => { alive = false }

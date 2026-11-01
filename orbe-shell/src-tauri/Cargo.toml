@@ -1,6 +1,6 @@
 [package]
 name = "orbe-shell"
-version = "1.1.0.1"
+version = "1.1.0.2"
 description = "Orbe Shell — experiência de desktop premium para Windows"
 authors = ["Orbe"]
 edition = "2021"

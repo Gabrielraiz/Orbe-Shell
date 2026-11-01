@@ -5,7 +5,7 @@
 // a interface mostra apenas as ferramentas internas do próprio shell, que são
 // genuinamente funcionais — nada é inventado.
 
-export const VERSION = '1.1.0.1'
+export const VERSION = '1.1.0.2'
 
 // Ferramentas internas do Orbe (código real, executado dentro do shell)
 export const INTERNAL_APPS = {
