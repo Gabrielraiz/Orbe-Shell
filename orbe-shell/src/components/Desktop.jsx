@@ -169,12 +169,10 @@ function MusicWidget() {
 
   const pick = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const file = await open({ multiple: false, filters: [{ name: 'Áudio', extensions: ['mp3', 'ogg', 'wav', 'flac', 'm4a'] }] })
+      const file = await native.pickFile({ multiple: false, filters: [{ name: 'Áudio', extensions: ['mp3', 'ogg', 'wav', 'flac', 'm4a'] }] })
       if (!file) return
       // Converte caminho em URL de recurso nativo reconhecida pelo WebView
-      const { convertFileSrc } = await import('@tauri-apps/api/core')
-      setTrack({ path: file, url: convertFileSrc(file) })
+      setTrack({ path: file, url: native.convertFileSrc(file) })
       setPlaying(false); setErr(null)
     } catch (e) {
       setErr(`Seletor de arquivo indisponível no navegador (${e}). Use o app nativo.`)

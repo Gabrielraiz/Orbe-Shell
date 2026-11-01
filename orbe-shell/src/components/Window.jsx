@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, useAnimationControls, AnimatePresence } from 'framer-motion'
 import { useShellStore } from '../store/shellStore'
-import { findAppById, internalApp, VERSION } from '../lib/apps'
+import { findAppById, internalApp, VERSION, cmpVer } from '../lib/apps'
 import * as native from '../lib/native'
 import { Icon } from './icons/Icons'
 import { AppIcon } from './AppIcon'
@@ -350,14 +350,8 @@ function SettingsPanel() {
 }
 
 // ── Central de Atualização REAL: consulta o registro público do projeto
-//    (via backend) e instala apenas com confirmação explícita do usuário. ──
-function cmpVer(a, b) {
-  const pa = a.replace(/^v/, '').split('.').map(Number)
-  const pb = b.replace(/^v/, '').split('.').map(Number)
-  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) > (pb[i] || 0)) return 1; if ((pa[i] || 0) < (pb[i] || 0)) return -1 }
-  return 0
-}
-
+//    (via backend) e instala apenas com confirmação explícita do usuário.
+//    A comparacao de versoes usa cmpVer() compartilhada (testada em tests/). ──
 function UpdatePanel() {
   const push = useShellStore((s) => s.pushContinuity)
   const [channel, setChannel] = useState('stable')

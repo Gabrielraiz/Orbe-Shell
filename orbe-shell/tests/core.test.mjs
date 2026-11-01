@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 // ── Avaliador da Calculadora (replica exatamente a logica de Window.jsx) ──
 function evalExpr(src) {
@@ -69,7 +70,7 @@ test('calculadora: simbolos × e ÷ sao normalizados', () => {
 })
 
 // ── Catalogo de aplicativos (lib/apps.js) ────────────────────────────────
-const { INTERNAL_APPS, findAppById, allApps, fromNative, DEFAULT_DOCK, VERSION } = await import('../src/lib/apps.js')
+const { INTERNAL_APPS, findAppById, allApps, fromNative, DEFAULT_DOCK, VERSION, cmpVer } = await import('../src/lib/apps.js')
 
 test('findAppById resolve apps internos reais', () => {
   assert.equal(findAppById('files').name, 'Explorador de Arquivos')
@@ -102,28 +103,41 @@ test('dock padrao contem apenas ferramentas internas funcionais', () => {
 })
 
 test('versao sincronizada em todos os arquivos', () => {
-  const APP_ROOT = new URL('..', import.meta.url).pathname
-  const pkg = JSON.parse(readFileSync(APP_ROOT + 'package.json', 'utf8'))
-  const tauriConf = JSON.parse(readFileSync(APP_ROOT + 'src-tauri/tauri.conf.json', 'utf8'))
-  const cargo = readFileSync(APP_ROOT + 'src-tauri/Cargo.toml', 'utf8')
+  // Funciona em Windows (H:/...) e POSIX (/...): use fileURLToPath sempre.
+  const APP_ROOT = fileURLToPath(new URL('..', import.meta.url))
+  const pkg = JSON.parse(readFileSync(APP_ROOT + '/package.json', 'utf8'))
+  const tauriConf = JSON.parse(readFileSync(APP_ROOT + '/src-tauri/tauri.conf.json', 'utf8'))
+  const cargo = readFileSync(APP_ROOT + '/src-tauri/Cargo.toml', 'utf8')
+  // Formato canônico: X.Y.Z.B (4 números). package.json/apps.js usam idêntico.
+  assert.match(pkg.version, /^\d+\.\d+\.\d+\.\d+$/, 'package.json deve ter versão X.Y.Z.B')
   assert.equal(pkg.version, VERSION)
-  assert.equal(tauriConf.version, VERSION)
-  assert.ok(cargo.includes(`version = "${VERSION}"`))
+  // Rust aceita apenas semver X.Y.Z ou X.Y.Z+build — o 4º número vira metadado '+B'.
+  const parts = pkg.version.split('.')          // ['X','Y','Z','B']
+  const base = parts.slice(0, 3).join('.')      // 'X.Y.Z'
+  const buildNum = parts[3]                     // 'B'
+  assert.equal(tauriConf.version, base, 'tauri.conf.json deve conter a base X.Y.Z')
+  assert.ok(cargo.includes(`version = "${base}+${buildNum}"`), 'Cargo.toml deve conter X.Y.Z+B')
 })
 
 // ── Comparacao de versoes usada pela Central de Atualizacao ──────────────
-function cmpVer(a, b) {
-  const pa = a.split('.').map(Number), pb = b.split('.').map(Number)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0)
-    if (d !== 0) return d
-  }
-  return 0
-}
+// cmpVer vem do import real acima (src/lib/apps.js) — o teste cobre o código
+// de produção diretamente, sem cópias locais que possam divergir.
 
 test('cmpVer ordena versoes semanticas corretamente', () => {
   assert.ok(cmpVer('1.2.0', '1.1.0') > 0)
   assert.ok(cmpVer('1.0.9', '1.1.0') < 0)
   assert.equal(cmpVer('1.1.0', '1.1.0'), 0)
   assert.ok(cmpVer('2.0.0', '1.99.99') > 0)
+  // Builds com 4 componentes (formato do Orbe Shell: X.Y.Z.B)
+  assert.ok(cmpVer('1.1.0.2', '1.1.0.1') > 0)
+  assert.ok(cmpVer('1.1.0.10', '1.1.0.2') > 0)   // numérico, não lexicográfico
+  assert.ok(cmpVer('1.1.0.1', '1.1.0') > 0)       // componente implícito 0
+  assert.equal(cmpVer('1.1.0.0', '1.1.0'), 0)
+  // Prefixo "v" opcional (tags git): v1.2.0 == 1.2.0
+  assert.equal(cmpVer('v1.1.0.3', '1.1.0.3'), 0)
+  assert.ok(cmpVer('v1.1.0.4', 'v1.1.0.3') > 0)
+  // Metadado '+B' é IGNORADO na comparação (comportamento semver correto):
+  // 1.1.0+3 e 1.1.0 são a mesma versão base. A Update Center compara sempre
+  // no formato X.Y.Z.B, então isso só protege contra strings vindas da API.
+  assert.equal(cmpVer('1.1.0+3', '1.1.0'), 0)
 })
