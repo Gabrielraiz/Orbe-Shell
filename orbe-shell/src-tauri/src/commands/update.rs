@@ -1,7 +1,7 @@
 // Orbe Update Center — verificação REAL de versão.
 // Consulta o registro do Windows via PowerShell (sem dependências extras) e
 // executa o instalador baixado SOMENTE após confirmação explícita do usuário.
-use super::{R, ShellError};
+use super::{ShellError, R};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
@@ -31,20 +31,24 @@ pub fn check_latest_version(channel: String) -> R<LatestVersion> {
     let channel = if channel == "beta" { "beta" } else { "stable" };
     // O script retorna um JSON com Version e DownloadUrl do último release do canal.
     let script = format!(
-        "$ProgressPreference='SilentlyContinue';try{{$r=Invoke-RestMethod -Uri 'https://api.github.com/repos/ORBE-SHELL/REPO/releases?per_page=10' -Headers @{{Accept='application/vnd.github+json'}};foreach($i in $r){{if($i.prerelease -and '{ch}' -ne 'beta'){{continue}};foreach($a in $i.assets){{if($a.name -like '*.exe'){{@{{Version=$i.tag_name;Url=$a.browser_download_url}}|ConvertTo-Json -Compress;exit}}}}}};throw 'none'}}catch{{@{{Version='';Url='';Err=\"$($_.Exception.Message)\"}}|ConvertTo-Json -Compress}}"
+        "$ProgressPreference='SilentlyContinue';try{{$r=Invoke-RestMethod -Uri 'https://api.github.com/repos/Gabrielraiz/Orbe-Shell/releases?per_page=10' -Headers @{{Accept='application/vnd.github+json'}};foreach($i in $r){{if($i.prerelease -and '{ch}' -ne 'beta'){{continue}};foreach($a in $i.assets){{if($a.name -like '*.exe'){{@{{Version=$i.tag_name;Url=$a.browser_download_url}}|ConvertTo-Json -Compress;exit}}}}}};throw 'none'}}catch{{@{{Version='';Url='';Err=\"$($_.Exception.Message)\"}}|ConvertTo-Json -Compress}}"
     , ch = channel);
 
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()
-        .map_err(|_| ShellError("PowerShell indisponível — verificação de atualização exige Windows.".into()))?;
+        .map_err(|_| {
+            ShellError("PowerShell indisponível — verificação de atualização exige Windows.".into())
+        })?;
 
     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let parsed: PsOut = serde_json::from_str(&text)
         .map_err(|_| ShellError("Não foi possível contactar o servidor de atualizações. Verifique sua conexão ou tente mais tarde.".into()))?;
 
     if parsed.version.is_empty() {
-        return Err(ShellError("Nenhuma versão publicada neste canal ainda.".into()));
+        return Err(ShellError(
+            "Nenhuma versão publicada neste canal ainda.".into(),
+        ));
     }
     Ok(LatestVersion {
         version: parsed.version,
@@ -58,7 +62,9 @@ pub fn check_latest_version(channel: String) -> R<LatestVersion> {
 #[tauri::command]
 pub fn download_and_run_installer(url: String) -> R<String> {
     if !(url.starts_with("https://")) {
-        return Err(ShellError("URL de instalação rejeitada por segurança (apenas HTTPS).".into()));
+        return Err(ShellError(
+            "URL de instalação rejeitada por segurança (apenas HTTPS).".into(),
+        ));
     }
     let _ = ps_quote(&url); // escapamento disponível para variações futuras do pipeline
     #[cfg(windows)]
@@ -76,10 +82,15 @@ pub fn download_and_run_installer(url: String) -> R<String> {
             .args(["-NoProfile", "-NonInteractive", "-Command", &script])
             .spawn()
             .map_err(|e| ShellError(format!("Falha ao iniciar o instalador: {}", e)))?;
-        Ok(format!("Instalador iniciado. Arquivo salvo em: {}", file.display()))
+        Ok(format!(
+            "Instalador iniciado. Arquivo salvo em: {}",
+            file.display()
+        ))
     }
     #[cfg(not(windows))]
     {
-        Err(ShellError("Atualização distribuída com instalador só está disponível no Windows.".into()))
+        Err(ShellError(
+            "Atualização distribuída com instalador só está disponível no Windows.".into(),
+        ))
     }
 }

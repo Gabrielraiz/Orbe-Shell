@@ -1,12 +1,19 @@
 {
   "name": "orbe-shell",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.0+5",
   "type": "module",
   "engines": {
-    "node": ">=18.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
+    "version:sync": "node scripts/sync-version.mjs",
+    "version:check": "node scripts/sync-version.mjs --check",
+    "test": "node --test tests/*.test.mjs",
+    "predev": "npm run version:sync",
+    "prebuild": "npm run version:sync",
+    "pretauri:dev": "npm run version:sync",
+    "pretauri:build": "npm run version:sync",
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",

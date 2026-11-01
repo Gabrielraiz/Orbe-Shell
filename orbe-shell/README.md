@@ -1,16 +1,24 @@
-# React + Vite
+# Orbe Shell 1.1.0.5
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Aplicativo Windows com Tauri 2, React e Rust. Consulte o [README principal](../README.md)
+para requisitos, funcionalidades e diagnóstico.
 
-Currently, two official plugins are available:
+Execute nesta pasta:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```powershell
+npm install
+npm run version:check
+npm test
+npm run tauri:dev
+```
 
-## React Compiler
+Para validar e gerar os instaladores Windows:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```powershell
+.\scripts\dev.ps1 -Full
+```
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+A versão exibida é definida em `src/lib/apps.js` (`1.1.0.5`).
+`npm run version:sync` grava `1.1.0+5` nos manifestos SemVer e no lockfile npm,
+preservando a revisão numérica no executável Windows. Os comandos de desenvolvimento
+e build executam essa sincronização automaticamente.

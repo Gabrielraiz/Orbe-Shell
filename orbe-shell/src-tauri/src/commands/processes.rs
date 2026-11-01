@@ -10,6 +10,7 @@ pub struct Proc {
     pub mem_mb: f64,
 }
 
+#[cfg(target_os = "linux")]
 fn list_unix() -> R<Vec<Proc>> {
     let mut out = Vec::new();
     for e in std::fs::read_dir("/proc")? {
@@ -49,7 +50,8 @@ fn list_unix() -> R<Vec<Proc>> {
 fn list_windows() -> R<Vec<Proc>> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
     };
     use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
     use windows::Win32::System::Threading::{
@@ -57,24 +59,19 @@ fn list_windows() -> R<Vec<Proc>> {
     };
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
-        let mut entry = PROCESSENTRY32::default();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32>() as u32;
+        let mut entry = PROCESSENTRY32W::default();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
         let mut out = Vec::new();
-        if Process32First(snap, &mut entry).is_ok() {
+        if Process32FirstW(snap, &mut entry).is_ok() {
             loop {
-                // szExeFile é [i8; 260] (CHAR wide); reinterpretamos como u16.
-                let raw = unsafe {
-                    std::slice::from_raw_parts(
-                        entry.szExeFile.as_ptr() as *const u16,
-                        entry.szExeFile.len(),
-                    )
-                };
+                let raw = &entry.szExeFile;
                 let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
                 let name = String::from_utf16_lossy(&raw[..end]);
                 let pid = entry.th32ProcessID;
                 // Memória REAL (Working Set) via K32GetProcessMemoryInfo; 0 quando o acesso for negado.
                 let mut mem_mb = 0.0_f64;
-                if let Ok(h) = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid) {
+                if let Ok(h) = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)
+                {
                     let mut pmc = PROCESS_MEMORY_COUNTERS::default();
                     pmc.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
                     if K32GetProcessMemoryInfo(h, &mut pmc, pmc.cb).as_bool() {
@@ -83,13 +80,17 @@ fn list_windows() -> R<Vec<Proc>> {
                     let _ = CloseHandle(h);
                 }
                 out.push(Proc { pid, name, mem_mb });
-                if Process32Next(snap, &mut entry).is_err() {
+                if Process32NextW(snap, &mut entry).is_err() {
                     break;
                 }
             }
         }
         let _ = CloseHandle(snap);
-        out.sort_by(|a, b| b.mem_mb.partial_cmp(&a.mem_mb).unwrap_or(std::cmp::Ordering::Equal));
+        out.sort_by(|a, b| {
+            b.mem_mb
+                .partial_cmp(&a.mem_mb)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         out.truncate(150);
         Ok(out)
     }
@@ -107,7 +108,9 @@ pub fn list_processes() -> R<Vec<Proc>> {
     }
     #[cfg(not(any(windows, target_os = "linux")))]
     {
-        Err(super::ShellError("Lista de processos indisponível nesta plataforma.".into()))
+        Err(super::ShellError(
+            "Lista de processos indisponível nesta plataforma.".into(),
+        ))
     }
 }
 
@@ -115,7 +118,13 @@ pub fn list_processes() -> R<Vec<Proc>> {
 /// matar a si mesmo e processos críticos do Windows quando nomeados.
 #[tauri::command]
 pub fn end_process(pid: u32, name: String) -> R<String> {
-    let critical = ["csrss.exe", "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe"];
+    let critical = [
+        "csrss.exe",
+        "wininit.exe",
+        "winlogon.exe",
+        "services.exe",
+        "lsass.exe",
+    ];
     if critical.iter().any(|c| c.eq_ignore_ascii_case(&name)) {
         return Err(super::ShellError(format!(
             "Segurança: {} é um processo crítico do Windows e não pode ser finalizado pelo Orbe.",
@@ -123,7 +132,9 @@ pub fn end_process(pid: u32, name: String) -> R<String> {
         )));
     }
     if pid == std::process::id() {
-        return Err(super::ShellError("O Orbe Shell não pode encerrar a si mesmo.".into()));
+        return Err(super::ShellError(
+            "O Orbe Shell não pode encerrar a si mesmo.".into(),
+        ));
     }
     #[cfg(unix)]
     {
@@ -140,4 +151,16 @@ pub fn end_process(pid: u32, name: String) -> R<String> {
             .spawn()?;
     }
     Ok(format!("Processo {} ({}) finalizado.", name, pid))
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    #[test]
+    fn reads_unicode_process_names() {
+        let processes = super::list_processes().expect("Windows process snapshot is available");
+        assert!(!processes.is_empty());
+        assert!(processes
+            .iter()
+            .all(|process| !process.name.contains('\u{fffd}')));
+    }
 }

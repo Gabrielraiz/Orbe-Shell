@@ -1,4 +1,4 @@
-# Orbe Shell 1.1.0.4
+# Orbe Shell 1.1.0.5
 
 Aplicativo nativo de shell para Windows construído com **Tauri 2 (Rust)** e **React 19**.
 Substitui a experiência visual do desktop por um ambiente Liquid Glass completo — Dock,
@@ -13,7 +13,7 @@ de utilizar em cada interação.
 
 ## Requisitos (Windows)
 
-- Node.js >= 18 (LTS recomendado)
+- Node.js 20.19+ ou 22.12+ (Node 24 LTS recomendado)
 - Rust (rustup) com toolchain `stable-msvc`
 - Visual Studio Build Tools 2022 (workload "Desktop development with C++")
 - WebView2 Runtime (presente no Windows 11; instalador automático no Windows 10)
@@ -41,7 +41,7 @@ testes unitários, oxlint, vite build, cargo check e grava um relatório `.log` 
 
 ## Os 12 pilares — agora como funcionalidades reais
 
-| # | Pilar | Status em 1.1.0.4 |
+| # | Pilar | Status em 1.1.0.5 |
 |---|-------|-------------------|
 | 1 | Liquid Glass Premium | Escuro translúcido, blur real, cores dinâmicas extraídas do papel de parede ativo |
 | 2 | Animações fluidas | Springs do Framer Motion, efeito Genie ao minimizar, velocidade global ajustável no Studio |
@@ -90,5 +90,20 @@ Stack: **React 19 · Vite · Zustand · Framer Motion · Tauri 2 · Rust (window
 - Rollback assinado de atualizações e canais beta/experimental com checksum
 - Suporte a toque e gestos; otimizações automáticas por hardware
 
-> Versão 1.1.0.4 — foco: correções de build/lint, sincronização de versão, módulos reais
-> (volume, calculadora sem eval, explorer, tarefas, update) e script de diagnóstico.
+## Versão 1.1.0.5
+
+- Sincronização de versão sem colisões com `-Full`/`-Build`, sem corromper JSON,
+  dependências Rust ou acentos. A fonte da versão continua em `src/lib/apps.js`.
+- UI e tag Git: `1.1.0.5` / `v1.1.0.5`. Manifestos e lockfiles: `1.1.0+5`
+  (SemVer válido); o Tauri incorpora a revisão numérica no executável Windows.
+- Diagnóstico preserva a saída de stderr e os códigos de saída, bloqueia builds
+  após falhas e executa testes JavaScript e Rust com `-Tests`/`-Full`.
+- APIs Windows de áudio, CPU, memória, bateria, processos Unicode e papel de
+  parede usam os tipos fornecidos por windows-rs.
+- A Central de Atualização consulta os releases de `Gabrielraiz/Orbe-Shell`.
+
+```powershell
+npm run version:sync   # sincroniza manifestos e package-lock.json
+npm run version:check  # verifica sem modificar arquivos
+npm test              # testes JavaScript e regressões do diagnóstico
+```

@@ -6,7 +6,7 @@
 // Na próxima entrada (login) o Windows carrega o Orbe; se algo falhar, a
 // Recuperação de Emergência (botão físico/seguro ou este comando via app)
 // devolve o Explorer antes de qualquer reinício.
-use super::{R, ShellError};
+use super::{ShellError, R};
 use serde::Serialize;
 
 const SHELL_VALUE: &str = "OrbeShellEnabled";
@@ -14,9 +14,9 @@ const SHELL_VALUE: &str = "OrbeShellEnabled";
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FallbackStatus {
-    pub enabled: bool,           // troca de shell ativa na próxima entrada?
-    pub native_shell: String,    // shell original registrado (Explorer.exe etc.)
-    pub exe_path: String,        // caminho deste executável
+    pub enabled: bool,        // troca de shell ativa na próxima entrada?
+    pub native_shell: String, // shell original registrado (Explorer.exe etc.)
+    pub exe_path: String,     // caminho deste executável
     pub platform_supported: bool,
 }
 
@@ -58,7 +58,7 @@ pub fn set_explorer_fallback(enable: bool) -> R<String> {
         let key = r"HKCU\Software\Microsoft\Windows NT\CurrentVersion\Winlogon";
         if enable {
             // Guarda o shell atual ANTES de alterar (para rollback real).
-            let cur = run_reg(&["query", key, "/v", "Shell"]);
+            let cur = run_reg(&["query", key, "/v", "Shell"]).unwrap_or_default();
             let prev = extract_reg_value(cur.as_str()).unwrap_or_else(|| "explorer.exe".into());
             let _ = std::fs::write(config_backup_path()?, &prev);
             run_reg(&["add", key, "/v", "Shell", "/t", "REG_SZ", "/d", &exe, "/f"])?;
@@ -69,8 +69,21 @@ pub fn set_explorer_fallback(enable: bool) -> R<String> {
         } else {
             let prev = std::fs::read_to_string(config_backup_path()?)
                 .unwrap_or_else(|_| "explorer.exe".into());
-            run_reg(&["add", key, "/v", "Shell", "/t", "REG_SZ", "/d", prev.trim(), "/f"])?;
-            return Ok(format!("Shell restaurado para {} na próxima entrada.", prev.trim()));
+            run_reg(&[
+                "add",
+                key,
+                "/v",
+                "Shell",
+                "/t",
+                "REG_SZ",
+                "/d",
+                prev.trim(),
+                "/f",
+            ])?;
+            return Ok(format!(
+                "Shell restaurado para {} na próxima entrada.",
+                prev.trim()
+            ));
         }
     }
     #[cfg(not(windows))]
@@ -106,9 +119,7 @@ fn dirs_orbe() -> R<std::path::PathBuf> {
 
 #[cfg(windows)]
 fn run_reg(args: &[&str]) -> R<String> {
-    let out = std::process::Command::new("reg")
-        .args(args)
-        .output()?;
+    let out = std::process::Command::new("reg").args(args).output()?;
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
