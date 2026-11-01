@@ -7,6 +7,8 @@ import assert from 'node:assert/strict'
 function evalExpr(src) {
   let i = 0
   const s = src.replace(/\s+/g, '')
+  // rejeita colagem maliciosa de tokens: "1 2" viraria "12", "2 3" viraria "23"
+  if (/\d\s+\d|[a-z]\s+[a-z(]/i.test(src)) throw new Error('espaco')
   const peek = () => s[i]
   const eat = (c) => { if (peek() === c) { i++; return true } return false }
   function parseNum() {
@@ -40,7 +42,7 @@ function evalExpr(src) {
     }
   }
   const out = parseExpr()
-  if (i !== s.length) throw new Error('fim')
+  if (i < s.length) throw new Error('fim')
   return out
 }
 
@@ -55,7 +57,9 @@ test('calculadora: expressoes invalidas lancam erro (sem eval)', () => {
   assert.throws(() => evalExpr('2+'))
   assert.throws(() => evalExpr('alert(1)'))
   assert.throws(() => evalExpr('(()'))
-  assert.throws(() => evalExpr('1 2'))
+  assert.throws(() => evalExpr('2 3'))   // tokens colados apos normalizacao de espacos
+  assert.throws(() => evalExpr('1a'))    // caractere invalido
+  assert.throws(() => evalExpr('*5'))    // operador sem operando
 })
 
 test('calculadora: simbolos × e ÷ sao normalizados', () => {

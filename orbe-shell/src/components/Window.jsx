@@ -188,6 +188,8 @@ function TasksPanel() {
 function evalExpr(src) {
   let i = 0
   const s = src.replace(/\s+/g, '')
+  // rejeita colagem maliciosa de tokens: "1 2" viraria "12", "2 3" viraria "23"
+  if (/\d\s+\d|[a-z]\s+[a-z(]/i.test(src)) throw new Error('espaco')
   const peek = () => s[i]
   const eat = (c) => { if (peek() === c) { i++; return true } return false }
   function parseNum() {
@@ -221,7 +223,7 @@ function evalExpr(src) {
     }
   }
   const out = parseExpr()
-  if (i !== s.length) throw new Error('fim')
+  if (i < s.length) throw new Error('fim')
   return out
 }
 
