@@ -13,10 +13,10 @@ async function call(cmd, args) {
 // Helpers para APIs de plugin — carregadas estaticamente aqui (e não com
 // dynamic import dentro dos componentes) para que o bundler agrupe uma única
 // vez e o aviso INEFFECTIVE_DYNAMIC_IMPORT desapareça do build.
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 export async function pickFile(options) {
   if (!IS_TAURI) throw new Error('modo-web')
-  const { open } = await import('@tauri-apps/plugin-dialog')
-  return open(options)
+  return dialogOpen(options)
 }
 export { convertFileSrc } from '@tauri-apps/api/core'
 
