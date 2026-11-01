@@ -5,7 +5,7 @@
 // a interface mostra apenas as ferramentas internas do próprio shell, que são
 // genuinamente funcionais — nada é inventado.
 
-export const VERSION = '1.1.0.2'
+export const VERSION = '1.1.0.3'
 
 // Ferramentas internas do Orbe (código real, executado dentro do shell)
 export const INTERNAL_APPS = {
@@ -85,4 +85,16 @@ export function findAppById(id, nativeApps = []) {
 // Lista completa para busca/recentes: apps reais + internos.
 export function allApps(nativeApps = []) {
   return [...Object.values(INTERNAL_APPS), ...nativeApps]
+}
+
+// Comparacao de versoes (X.Y.Z ou X.Y.Z.N, com prefixo "v" opcional).
+// Usada pela Central de Atualizacao e validada por testes unitarios.
+export function cmpVer(a, b) {
+  const norm = (s) => String(s).replace(/^v/i, '').split('+')[0].split('.').map((x) => parseInt(x, 10) || 0)
+  const pa = norm(a), pb = norm(b)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0)
+    if (d !== 0) return d > 0 ? 1 : -1
+  }
+  return 0
 }

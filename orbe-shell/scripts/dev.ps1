@@ -19,7 +19,17 @@ param(
     [switch]$Fix
 )
 
+# Erros de redirect (2>&1) nunca devem derrubar o diagnostico: capturamos tudo.
 $ErrorActionPreference = 'Continue'
+
+# Redirecionamentos 2>&1 fazem o PowerShell tratar avisos de stderr como erro
+# (NativeCommandError). Isso polui o log e pode abortar etapas. Normalizamos.
+if (-not (Get-Variable PSNativeCommandErrorMaxFunctionCount -ErrorAction SilentlyContinue)) {
+    $global:PSNativeCommandErrorMaxFunctionCount = [int]::MaxValue
+}
+$env:MSYS2_ARG_CONV_EXCL = '*'
+$env:CARGO_TERM_COLOR = 'never'   # sem ANSI no log -> relatorio limpo e legivel
+
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
@@ -39,10 +49,34 @@ function Run-Step {
     param([string]$Name, [string]$Cmd, [string[]]$CmdArgs, [int]$WarnExitCode = -1)
     Section $Name
     Log "> $Cmd $($CmdArgs -join ' ')"
-    $out = & $Cmd @CmdArgs 2>&1
-    $code = $LASTEXITCODE
-    $text = ($out | Out-String)
+    # Captura stdout+stderr sem que o PowerShell converta stderr em erro fatal.
+    # 2>&1 preserva a ordem real das linhas; EAP='Stop' dentro do try transforma
+    # falha de execucao em excecao capturavel (cmd nao encontrado, etc).
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Stop'
+    try {
+        $raw = & $Cmd @CmdArgs 2>&1 | ForEach-Object { "$_" }
+    } catch {
+        $raw = @("ERRO AO EXECUTAR '$Cmd': " + $_.Exception.Message)
+    }
+    $ErrorActionPreference = 'Continue'
+    $code = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 1 }
+    $text = (($raw | Out-String) -replace "`r", '')
     if ($text.Trim()) { Log $text.TrimEnd() }
+
+    # Filtro anti-poluicao: avisos benignos de tooling (rolldown/vite e npm)
+    # ganham contexto explicito no relatorio em vez de parecerem erros.
+    $harmless = @('INEFFECTIVE_DYNAMIC_IMPORT', 'NativeCommandError', 'C:\Program Files\nodejs')
+    $suspicious = $raw | Where-Object {
+        $line = "$_"
+        ($line -match '(?i)\berror\b|erro|\bwarn(ing)?\b|aviso|fail') -and
+        -not ($harmless | Where-Object { $line -like "*$_*" })
+    }
+    if ($suspicious) {
+        Log ''
+        Log '--- Linhas relevantes (erros/avisos verdadeiros) ---'
+        $suspicious | Select-Object -First 30 | ForEach-Object { Log "  ! $_" }
+    }
 
     if ($code -eq 0) {
         Log "[OK] $Name"
@@ -76,7 +110,54 @@ Log "Orbe Shell - Diagnostico iniciado em $(Get-Date)"
 Log "Diretorio: $Root"
 
 # ---------------------------------------------------------------------------
-# 0) Ambiente
+# 0a) Auto-sync de versao (fonte da verdade: package.json)
+#     Se qualquer arquivo divergir, e corrigido automaticamente ANTES das
+#     verificacoes. Rust exige semver X.Y.Z; o sufixo de build (.N) vira
+#     metadados "+N" no Cargo.toml/tauri.conf.json (validos e ignorados pelo
+#     resolver), mantendo as quatro fontes na mesma versao base.
+# ---------------------------------------------------------------------------
+Section 'Sincronizacao de versao'
+$pkgTxt = Get-Content (Join-Path $Root 'package.json') -Raw
+$pkgV = ($pkgTxt | ConvertFrom-Json).version
+if ($pkgV -notmatch '^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$') {
+    Log "[FALHA] Versao em package.json invalida: '$pkgV' (esperado X.Y.Z ou X.Y.Z.N)."
+    $script:Failures++
+} else {
+    $base = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+    $build = $Matches[4]
+    $semver = if ($build) { "$base+$build" } else { $base }
+    Log "package.json define a versao: $pkgV (semver Rust: $semver)"
+
+    $cargoFile = Join-Path $Root 'src-tauri\Cargo.toml'
+    $confFile  = Join-Path $Root 'src-tauri\tauri.conf.json'
+    $appsFile  = Join-Path $Root 'src\lib\apps.js'
+
+    $cargoTxt = Get-Content $cargoFile -Raw
+    $newCargo = $cargoTxt -replace '(?m)^version\s*=\s*"[^"]+"', "version = `"$semver`""
+    if ($newCargo -ne $cargoTxt) { Set-Content $cargoFile $newCargo -NoNewline -Encoding UTF8; Log '  Cargo.toml atualizado para.' }
+
+    $confTxt = Get-Content $confFile -Raw
+    $newConf = $confTxt -replace '("version"\s*:\s*")[^"]+(")', "`$1$base`$2"
+    if ($newConf -ne $confTxt) { Set-Content $confFile $newConf -NoNewline -Encoding UTF8; Log '  tauri.conf.json atualizado para base.' }
+
+    $appsTxt = Get-Content $appsFile -Raw
+    $newApps = $appsTxt -replace "(VERSION\s*=\s*')[^']+(')", "`${1}$pkgV`${2}"
+    if ($newApps -ne $appsTxt) { Set-Content $appsFile $newApps -NoNewline -Encoding UTF8; Log '  apps.js atualizado para pkg.' }
+
+    # Releitura para confirmacao
+    $okCargo = (Get-Content $cargoFile -Raw) -match [regex]::Escape("`"$semver`"")
+    $okConf  = (Get-Content $confFile -Raw)  -match [regex]::Escape("`"$base`"")
+    $okApps  = (Get-Content $appsFile -Raw)  -match [regex]::Escape("'$pkgV'")
+    if ($okCargo -and $okConf -and $okApps) {
+        Log '[OK] Versoes sincronizadas (package.json = tauri.conf = Cargo.toml = apps.js).'
+    } else {
+        Log "[FALHA] Auto-sync incompleto: cargo=$okCargo conf=$okConf apps=$okApps"
+        $script:Failures++
+    }
+}
+
+# ---------------------------------------------------------------------------
+# 0b) Ambiente
 # ---------------------------------------------------------------------------
 Section 'Ambiente'
 foreach ($t in @(
