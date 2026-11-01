@@ -36,6 +36,11 @@ pub fn run() {
             commands::wallpaper::set_wallpaper,
             commands::shell::set_explorer_fallback,
             commands::shell::get_explorer_fallback,
+            commands::audio::audio_state,
+            commands::audio::audio_set_volume,
+            commands::audio::audio_toggle_mute,
+            commands::update::check_latest_version,
+            commands::update::download_and_run_installer,
         ])
         .run(tauri::generate_context!())
         .expect("erro fatal ao iniciar Orbe Shell");

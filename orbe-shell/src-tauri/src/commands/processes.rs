@@ -49,8 +49,11 @@ fn list_unix() -> R<Vec<Proc>> {
 fn list_windows() -> R<Vec<Proc>> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
-        TH32CS_SNAPPROCESS,
+        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
     };
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
@@ -59,17 +62,34 @@ fn list_windows() -> R<Vec<Proc>> {
         let mut out = Vec::new();
         if Process32First(snap, &mut entry).is_ok() {
             loop {
-                let name = String::from_utf16_lossy(&entry.szExeFile)
-                    .trim_end_matches('\0')
-                    .to_string();
-                out.push(Proc { pid: entry.th32ProcessID, name, mem_mb: 0.0 });
+                // szExeFile é [i8; 260] (CHAR wide); reinterpretamos como u16.
+                let raw = unsafe {
+                    std::slice::from_raw_parts(
+                        entry.szExeFile.as_ptr() as *const u16,
+                        entry.szExeFile.len(),
+                    )
+                };
+                let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
+                let name = String::from_utf16_lossy(&raw[..end]);
+                let pid = entry.th32ProcessID;
+                // Memória REAL (Working Set) via K32GetProcessMemoryInfo; 0 quando o acesso for negado.
+                let mut mem_mb = 0.0_f64;
+                if let Ok(h) = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid) {
+                    let mut pmc = PROCESS_MEMORY_COUNTERS::default();
+                    pmc.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+                    if K32GetProcessMemoryInfo(h, &mut pmc, pmc.cb).as_bool() {
+                        mem_mb = pmc.WorkingSetSize as f64 / (1024.0 * 1024.0);
+                    }
+                    let _ = CloseHandle(h);
+                }
+                out.push(Proc { pid, name, mem_mb });
                 if Process32Next(snap, &mut entry).is_err() {
                     break;
                 }
             }
         }
         let _ = CloseHandle(snap);
-        out.sort_by(|a, b| a.name.cmp(&b.name));
+        out.sort_by(|a, b| b.mem_mb.partial_cmp(&a.mem_mb).unwrap_or(std::cmp::Ordering::Equal));
         out.truncate(150);
         Ok(out)
     }

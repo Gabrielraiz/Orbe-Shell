@@ -1,8 +1,10 @@
 pub mod apps;
+pub mod audio;
 pub mod fs;
 pub mod processes;
 pub mod shell;
 pub mod system;
+pub mod update;
 pub mod wallpaper;
 
 use serde::Serialize;
@@ -33,6 +35,14 @@ impl From<&str> for ShellError {
 impl From<std::io::Error> for ShellError {
     fn from(e: std::io::Error) -> Self {
         ShellError(format!("Erro de sistema: {}", e))
+    }
+}
+
+// Erros das APIs Win32 (crate `windows`) viram mensagem amigável também.
+#[cfg(windows)]
+impl From<windows::core::Error> for ShellError {
+    fn from(e: windows::core::Error) -> Self {
+        ShellError(format!("Erro do Windows: {}", e))
     }
 }
 

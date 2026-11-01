@@ -8,6 +8,7 @@ import { AppIcon } from './AppIcon'
 // automática, reordenação por arrastar e menus de contexto completos.
 export function Dock() {
   const dockApps = useShellStore((s) => s.dockApps)
+  const nativeApps = useShellStore((s) => s.nativeApps)
   const dockSize = useShellStore((s) => s.dockSize)
   const magnify = useShellStore((s) => s.dockMagnify)
   const autoHide = useShellStore((s) => s.autoHideDock)
@@ -59,7 +60,7 @@ export function Dock() {
         </button>
         <span className="dock-sep" />
         {dockApps.map((appId, idx) => {
-          const app = APPS[appId]
+          const app = findAppById(appId, nativeApps)
           if (!app) return null
           const scale = itemScale(idx)
           return (

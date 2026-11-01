@@ -28,8 +28,8 @@ fn pretty_os(name: &str, version: &str) -> (String, String) {
 
 #[tauri::command]
 pub fn sys_info() -> R<SysInfo> {
-    let mut name = String::new();
-    let mut rel = String::new();
+    let mut n = String::new();
+    let mut r = String::new();
 
     #[cfg(unix)]
     {
@@ -44,15 +44,15 @@ pub fn sys_info() -> R<SysInfo> {
                     let end = buf[off..].iter().position(|&c| c == 0).unwrap_or(0);
                     String::from_utf8_lossy(&buf[off..off + end]).to_string()
                 };
-                name = field(0);
-                rel = field(65); // struct utsname: campos de 65 bytes
+                n = field(0);
+                r = field(65); // struct utsname: campos de 65 bytes
             }
         }
     }
 
     #[cfg(windows)]
     {
-        name = "Windows NT".to_string();
+        n = "Windows NT".to_string();
         #[repr(C)]
         struct OsVersionInfoExW {
             dw_os_version_size: u32,
@@ -73,22 +73,24 @@ pub fn sys_info() -> R<SysInfo> {
             dw_platform_id: 0,
             sz_csd_version: [0; 128],
         };
-        unsafe {
+        r = unsafe {
             if RtlGetVersion(&mut info) == 0 {
-                rel = format!(
+                format!(
                     "{}.{}.{}",
                     info.dw_major_version, info.dw_minor_version, info.dw_build_number
-                );
+                )
+            } else {
+                String::new()
             }
-        }
+        };
     }
 
     #[cfg(not(any(unix, windows)))]
     {
-        name = std::env::consts::OS.to_string();
+        n = std::env::consts::OS.to_string();
     }
 
-    let (os_label, ver) = pretty_os(&name, &rel);
+    let (os_label, ver) = pretty_os(&n, &r);
 
     Ok(SysInfo {
         os: os_label,
@@ -109,6 +111,19 @@ pub fn dirs_home() -> String {
     std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string())
+}
+
+/// Pasta "conhecida" real do usuário (Downloads, Documents...). No Windows
+/// essas pastas podem ser redirecionadas; usamos o caminho padrão relativo à
+/// pasta pessoal e verificamos a existência — sem inventar nada.
+pub fn known_folder(name: &str) -> Option<String> {
+    let home = dirs_home();
+    let cand = std::path::Path::new(&home).join(name);
+    if cand.is_dir() {
+        Some(cand.to_string_lossy().to_string())
+    } else {
+        None
+    }
 }
 
 fn ram_total_gb() -> f64 {

@@ -38,6 +38,15 @@ export const setSystemWallpaper = (path) => call('set_wallpaper', { path })
 export const getExplorerFallback = () => call('get_explorer_fallback')
 export const setExplorerFallback = (enable) => call('set_explorer_fallback', { enable })
 
+// ── Volume real do sistema (Endpoint Volume / amixer) ──────────────
+export const audioState = () => call('audio_state')
+export const audioSetVolume = (percent) => call('audio_set_volume', { percent })
+export const audioToggleMute = () => call('audio_toggle_mute')
+
+// ── Atualizações reais (registro público + instalador oficial) ─────
+export const checkLatestVersion = (channel) => call('check_latest_version', { channel })
+export const downloadAndRunInstaller = (url) => call('download_and_run_installer', { url })
+
 // ── Janela nativa (controles via plugin window) ────────────────────
 let _win = null
 export async function nativeWindow() {
