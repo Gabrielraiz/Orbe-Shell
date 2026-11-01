@@ -41,6 +41,7 @@ pub fn run() {
             commands::audio::audio_toggle_mute,
             commands::update::check_latest_version,
             commands::update::download_and_run_installer,
+            commands::lock_workstation,
         ])
         .run(tauri::generate_context!())
         .expect("erro fatal ao iniciar Orbe Shell");

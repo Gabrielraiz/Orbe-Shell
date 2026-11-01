@@ -47,6 +47,9 @@ export const audioToggleMute = () => call('audio_toggle_mute')
 export const checkLatestVersion = (channel) => call('check_latest_version', { channel })
 export const downloadAndRunInstaller = (url) => call('download_and_run_installer', { url })
 
+// ── Segurança ─────────────────────────────────────────────────────
+export const lockWorkstation = () => call('lock_workstation', {})
+
 // ── Janela nativa (controles via plugin window) ────────────────────
 let _win = null
 export async function nativeWindow() {

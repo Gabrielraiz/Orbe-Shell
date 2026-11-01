@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, useAnimationControls, AnimatePresence } from 'framer-motion'
 import { useShellStore } from '../store/shellStore'
-import { APPS } from '../lib/apps'
+import { findAppById, internalApp, VERSION } from '../lib/apps'
+import * as native from '../lib/native'
 import { Icon } from './icons/Icons'
 import { AppIcon } from './AppIcon'
 
-// Conteúdo simulado dos aplicativos (protótipo)
-function AppBody({ appId, win }) {
+// Conteúdo dos aplicativos. Cada painel aqui é código real e funcional:
+// ferramentas internas do shell (arquivos, processos, notas em disco, volume,
+// atualizações verificadas no registro público) — nada de dados inventados.
+function AppBody({ appId }) {
   switch (appId) {
     case 'studio': return <StudioPanel />
     case 'settings': return <SettingsPanel />
@@ -15,19 +18,167 @@ function AppBody({ appId, win }) {
     case 'terminal': return <TerminalPanel />
     case 'calculator': return <CalcPanel />
     case 'notes': return <NotesPanel />
+    case 'files': return <FilesPanel />
+    case 'tasks': return <TasksPanel />
     case 'about': return <AboutPanel />
-    default: return <GenericPanel app={APPS[appId]} />
+    default: return <MissingPanel appId={appId} />
   }
 }
 
-function GenericPanel({ app }) {
-  const lines = ['Documentos recentes', 'Área de trabalho sincronizada', 'Widgets disponíveis no Studio']
+function MissingPanel({ appId }) {
   return (
     <div className="body-pad">
-      <div className="fake-toolbar"><span className="fake-btn" /><span className="fake-btn wide" /><span className="fake-btn" /></div>
-      <h3 style={{ margin: '14px 0 6px' }}>{app.name}</h3>
-      <p className="muted">Este é um conteúdo de demonstração do shell. Em produção, janelas reais de aplicativos Win32/UWP serão integradas via Orbe Window Bridge, respeitando as limitações de cada programa.</p>
-      <ul className="fake-list">{lines.map((l) => <li key={l}><span className="fake-bullet" />{l}</li>)}</ul>
+      <h3>Conteúdo indisponível</h3>
+      <p className="muted">Não existe um módulo real para “{appId}”. O Orbe Shell não exibe conteúdo de demonstração: abra uma ferramenta listada no Menu ou no Dock.</p>
+    </div>
+  )
+}
+
+// ── Explorador de Arquivos REAL (backend Rust, restrito à pasta do usuário) ──
+const fmtSize = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : b < 1073741824 ? `${(b / 1048576).toFixed(1)} MB` : `${(b / 1073741824).toFixed(2)} GB`)
+
+function FilesPanel() {
+  const push = useShellStore((s) => s.pushContinuity)
+  const [cwd, setCwd] = useState('')
+  const [entries, setEntries] = useState(null)
+  const [err, setErr] = useState(null)
+  const [view, setView] = useState(null) // {path, name, text} | {path, name, text, editing}
+  const [busy, setBusy] = useState(false)
+
+  const go = async (p) => {
+    if (!native.IS_TAURI) { setErr('O Explorador exige o app nativo. Rode com "npm run tauri:dev".'); return }
+    setBusy(true); setErr(null)
+    try {
+      const list = await native.readDir(p)
+      setCwd(p); setEntries(list)
+    } catch (e) { setErr(String(e)) }
+    setBusy(false)
+  }
+
+  useEffect(() => { if (!entries && !err) go('') }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openEntry = async (en) => {
+    if (en.isDir) return go(en.path)
+    try {
+      const text = await native.readFile(en.path)
+      setView({ path: en.path, name: en.name, text, editing: false })
+    } catch (e) { setErr(String(e)) }
+  }
+
+  const save = async () => {
+    try {
+      await native.writeFile(view.path, view.text)
+      setView({ ...view, editing: false })
+      push(`Arquivo salvo: ${view.name}`)
+    } catch (e) { setErr(String(e)) }
+  }
+
+  const del = async (en) => {
+    try {
+      const msg = await native.deleteEntry(en.path)
+      push(msg); go(cwd)
+    } catch (e) { setErr(String(e)) }
+  }
+
+  if (view) {
+    return (
+      <div className="files">
+        <div className="files-bar">
+          <button className="pill ghost" onClick={() => setView(null)}>Voltar</button>
+          <span className="files-path">{view.name}</span>
+          {view.editing
+            ? <><button className="pill" onClick={save}>Salvar</button><button className="pill ghost" onClick={() => setView({ ...view, editing: false })}>Cancelar</button></>
+            : <button className="pill" onClick={() => setView({ ...view, editing: true })}>Editar</button>}
+        </div>
+        {err && <div className="panel-err">{err}</div>}
+        {view.editing
+          ? <textarea className="files-edit" value={view.text} onChange={(e) => setView({ ...view, text: e.target.value })} spellCheck={false} />
+          : <pre className="files-view">{view.text}</pre>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="files">
+      <div className="files-bar">
+        <button className="pill ghost" title="Subir um nível" disabled={!cwd}
+          onClick={() => { const up = cwd.replace(/[\\/][^\\/]*$/, ''); go(up || '') }}>
+          <Icon name="chevron" size={12} /> Voltar
+        </button>
+        <span className="files-path">{cwd || 'Pasta do usuário'}</span>
+        <button className="pill ghost" onClick={() => go(cwd)}><Icon name="refresh" size={12} /></button>
+      </div>
+      {err && <div className="panel-err">{err}</div>}
+      {busy && <div className="muted pad">Lendo pasta…</div>}
+      {!busy && entries && (
+        <div className="files-list">
+          {entries.length === 0 && <div className="muted pad">Pasta vazia.</div>}
+          {entries.map((en) => (
+            <div key={en.path} className="file-row" onDoubleClick={() => openEntry(en)}
+              onContextMenu={(e) => { e.preventDefault(); if (!en.isDir) del(en) }}>
+              <Icon name={en.isDir ? 'folder' : 'note'} size={15} color="rgba(255,255,255,.7)" />
+              <span className="fname">{en.name}</span>
+              <span className="fsize">{en.isDir ? '' : fmtSize(en.size)}</span>
+              <button className="fopen pill ghost" onClick={() => openEntry(en)}>Abrir</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {!native.IS_TAURI && <div className="muted pad">Visualização de arquivos disponível apenas no aplicativo nativo.</div>}
+    </div>
+  )
+}
+
+// ── Gerenciador de Tarefas REAL (list_processes / end_process via Rust) ──
+function TasksPanel() {
+  const push = useShellStore((s) => s.pushContinuity)
+  const [procs, setProcs] = useState(null)
+  const [err, setErr] = useState(null)
+  const [q, setQ] = useState('')
+  const [auto, setAuto] = useState(true)
+
+  const refresh = async () => {
+    try { setProcs(await native.listProcesses()); setErr(null) }
+    catch (e) { setErr(String(e)) }
+  }
+  useEffect(() => {
+    if (!native.IS_TAURI) { setErr('Gerenciador de tarefas exige o app nativo. Rode com "npm run tauri:dev".'); return }
+    refresh()
+    const t = auto ? setInterval(refresh, 3000) : null
+    return () => { if (t) clearInterval(t) }
+  }, [auto]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const kill = async (p) => {
+    try { const msg = await native.endProcess(p.pid, p.name); push(msg); refresh() }
+    catch (e) { push(`Falha ao encerrar: ${e}`) }
+  }
+
+  const filtered = (procs || []).filter((p) => p.name.toLowerCase().includes(q.toLowerCase()))
+
+  return (
+    <div className="tasks">
+      <div className="files-bar">
+        <input className="task-search" placeholder="Filtrar processos…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <label className="row-inline"><Switch on={auto} onChange={setAuto} /><span>Atualizar</span></label>
+        <button className="pill ghost" onClick={refresh}><Icon name="refresh" size={12} /> Agora</button>
+      </div>
+      {err && <div className="panel-err">{err}</div>}
+      {procs && (
+        <>
+          <div className="task-head"><span>PID</span><span>Processo</span><span>Memória</span><span /></div>
+          <div className="task-list">
+            {filtered.slice(0, 120).map((p) => (
+              <div key={p.pid} className="task-row">
+                <span className="tpid">{p.pid}</span>
+                <span className="tname">{p.name}</span>
+                <span>{p.memMb > 0 ? `${p.memMb.toFixed(1)} MB` : '—'}</span>
+                <button className="tkill pill danger" onClick={() => kill(p)}>Encerrar</button>
+              </div>
+            ))}
+            {filtered.length === 0 && <div className="muted pad">Nenhum processo corresponde ao filtro.</div>}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -48,25 +199,66 @@ function CalcPanel() {
   )
 }
 
+// ── Notas REAIS: salvam em arquivo na pasta do usuário (via backend) e
+//    usam localStorage como armazenamento honesto no modo web. ──
 function NotesPanel() {
-  const [text, setText] = useState(localStorage.getItem('orbe-note') || 'Bem-vindo ao Orbe Shell ✦\n\nAnote suas ideias aqui.')
-  useEffect(() => { const t = setTimeout(() => localStorage.setItem('orbe-note', text), 300); return () => clearTimeout(t) }, [text])
-  return <div className="body-pad"><textarea className="note-area" value={text} onChange={(e) => setText(e.target.value)} /></div>
+  const push = useShellStore((s) => s.pushContinuity)
+  const [text, setText] = useState(localStorage.getItem('orbe-note') || '')
+  const [status, setStatus] = useState(native.IS_TAURI ? 'Carregando nota do disco…' : 'Salvando localmente (navegador).')
+  const notePathRef = useRef(null)
+
+  useEffect(() => {
+    let alive = true
+    if (!native.IS_TAURI) { setStatus('Salvando localmente neste navegador.'); return }
+    (async () => {
+      try {
+        const home = (await native.sysInfo()).home
+        const path = `${home}${navigator.platform.includes('Win') ? '\\' : '/'}orbe-notes.txt`
+        notePathRef.current = path
+        const content = await native.readFile(path).catch(() => '')
+        if (!alive) return
+        if (content) setText(content)
+        setStatus(`Nota salva em disco: ${path}`)
+      } catch (e) { if (alive) setStatus(`Nota em armazenamento local: ${e}`) }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      localStorage.setItem('orbe-note', text)
+      if (notePathRef.current) native.writeFile(notePathRef.current, text).catch(() => {})
+    }, 400)
+    return () => clearTimeout(t)
+  }, [text])
+
+  return (
+    <div className="body-pad notes">
+      <textarea className="note-area" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escreva sua nota…" />
+      <div className="notes-foot">
+        <span className="muted">{status}</span>
+        <button className="pill ghost" onClick={() => { setText(''); push('Nota limpa.') }}>Limpar</button>
+      </div>
+    </div>
+  )
 }
 
+// ── Console REAL: comandos executados contra o backend nativo ───────
 function TerminalPanel() {
-  const [hist, setHist] = useState(['Orbe Shell 0.4 (prototype) — digite "help".'])
+  const [hist, setHist] = useState([native.IS_TAURI ? 'Console do Sistema — digite "help".' : 'Console do Sistema (modo web: comandos nativos indisponíveis) — digite "help".'])
   const [cmd, setCmd] = useState('')
-  const run = () => {
-    const out = [...hist, `❯ ${cmd}`]
+  const run = async () => {
+    const out = [...hist, `> ${cmd}`]
     const c = cmd.trim().toLowerCase()
-    if (c === 'help') out.push('comandos: help, neofetch, ls, echo <texto>, clear, exit')
-    else if (c.startsWith('echo')) out.push(cmd.slice(5))
-    else if (c === 'ls') out.push('Documentos  Imagens  Projetos  Downloads')
-    else if (c === 'neofetch') out.push('     ◍◍     Usuário@ORBE\n  ◍    ◍   ----------------\n  ◍    ◍   SO: Windows 11 + Orbe Shell\n     ◍◍     Kernel: NT 10.0 · Shell: orbe 0.4\n             UI: Liquid Glass · FPS alvo: 120')
+    if (c === 'help') out.push('comandos: help, sysinfo, ps, ls [pasta], volume, wallpaper, cat <arquivo>, clear')
+    else if (c === 'sysinfo') { try { const i = await native.sysInfo(); out.push(`${i.os} ${i.version}\nHost: ${i.hostname} · ${i.cpus} threads · RAM ${i.ramTotalGb.toFixed(1)} GB\nHome: ${i.home}`) } catch (e) { out.push(String(e)) } }
+    else if (c === 'ps') { try { const p = await native.listProcesses(); out.push(p.slice(0, 20).map((x) => `${String(x.pid).padEnd(8)}${x.name.padEnd(28)}${x.memMb.toFixed(1)} MB`).join('\n')) } catch (e) { out.push(String(e)) } }
+    else if (c === 'volume') { try { const a = await native.audioState(); out.push(`Volume: ${Math.round(a.volume * 100)}% · ${a.muted ? 'Silenciado' : 'Ativo'} · Dispositivo padrão: ${a.device}`) } catch (e) { out.push(String(e)) } }
+    else if (c === 'wallpaper') { try { out.push(await native.currentWallpaper()) } catch (e) { out.push(String(e)) } }
+    else if (c.startsWith('ls')) { try { const list = await native.readDir(cmd.slice(2).trim()); out.push(list.map((e) => `${e.isDir ? 'd' : '-'} ${e.name}`).join('\n') || '(vazio)') } catch (e) { out.push(String(e)) } }
+    else if (c.startsWith('cat ')) { try { out.push(await native.readFile(cmd.slice(4).trim())) } catch (e) { out.push(String(e)) } }
     else if (c === 'clear') { setHist(['']); setCmd(''); return }
-    else if (c === 'exit') out.push('Encerrar? Use o botão ✕ da janela.')
-    else if (c) out.push(`orbe: comando não reconhecido: ${c}`)
+    else if (c) out.push(`Comando não reconhecido: ${c}`)
     setHist(out); setCmd('')
   }
   return (
@@ -97,40 +289,114 @@ function SettingsPanel() {
   )
 }
 
+// ── Central de Atualização REAL: consulta o registro público do projeto
+//    (via backend) e instala apenas com confirmação explícita do usuário. ──
+function cmpVer(a, b) {
+  const pa = a.replace(/^v/, '').split('.').map(Number)
+  const pb = b.replace(/^v/, '').split('.').map(Number)
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) > (pb[i] || 0)) return 1; if ((pa[i] || 0) < (pb[i] || 0)) return -1 }
+  return 0
+}
+
 function UpdatePanel() {
+  const push = useShellStore((s) => s.pushContinuity)
   const [channel, setChannel] = useState('stable')
-  const [state, setState] = useState('idle') // idle | checking | ready | installing | done
-  const check = () => { setState('checking'); setTimeout(() => setState('ready'), 1400) }
-  const install = () => { setState('installing'); setTimeout(() => setState('done'), 2200) }
+  const [state, setState] = useState('idle') // idle | checking | ready | latest | installing | done | error
+  const [remote, setRemote] = useState(null)
+  const [err, setErr] = useState(null)
+  const [confirmed, setConfirmed] = useState(false)
+
+  const check = async () => {
+    if (!native.IS_TAURI) { setErr('A verificação de atualizações exige o app nativo (backend PowerShell).'); setState('error'); return }
+    setState('checking'); setErr(null); setRemote(null); setConfirmed(false)
+    try {
+      const info = await native.checkLatestVersion(channel)
+      setRemote(info)
+      setState(cmpVer(info.version, VERSION) > 0 ? 'ready' : 'latest')
+    } catch (e) { setErr(String(e)); setState('error') }
+  }
+
+  const install = async () => {
+    if (!confirmed) return
+    setState('installing')
+    try {
+      const msg = await native.downloadAndRunInstaller(remote.installerUrl)
+      push(msg)
+      setState('done')
+    } catch (e) { setErr(String(e)); setState('error') }
+  }
+
   return (
     <div className="body-pad update">
       <h3>Orbe Update Center</h3>
-      <div className="chans">{[['stable', 'Estável'], ['beta', 'Beta'], ['exp', 'Experimental']].map(([c, l]) => <button key={c} className={`chan ${channel === c ? 'on' : ''}`} onClick={() => setChannel(c)}>{l}<small>{c === 'stable' ? 'Verificado' : c === 'beta' ? 'Semanal' : 'Diário'}</small></button>)}</div>
+      <div className="chans">{[['stable', 'Estável'], ['beta', 'Beta']].map(([c, l]) => <button key={c} className={`chan ${channel === c ? 'on' : ''}`} onClick={() => { setChannel(c); setState('idle') }}>{l}<small>{c === 'stable' ? 'Verificado' : 'Antecipado'}</small></button>)}</div>
       <div className="upd-card glass">
-        {state === 'idle' && <p>Versão instalada: <b>Orbe Shell 0.4.0-prototype</b> · canal {channel}. Clique em verificar para procurar atualizações.</p>}
-        {state === 'checking' && <p className="muted">Procurando atualizações…</p>}
-        {state === 'ready' && <><p><b>Orbe Shell 0.4.1</b> disponível.</p><p className="muted">Você será avisado antes da instalação. Esta versão pode ser revertida pelo histórico.</p><button className="pill" onClick={install}>Baixar e instalar</button></>}
-        {state === 'installing' && <><div className="prog"><motion.div initial={{ width: 0 }} animate={{ width: '100%' }} transition={{ duration: 2 }} /></div><p className="muted">Instalando…</p></>}
-        {state === 'done' && <><p>✔ Instalação concluída. Reinicie o shell para aplicar.</p><button className="pill ghost" onClick={() => setState('idle')}>Reverter para 0.4.0</button></>}
+        {state === 'idle' && <p>Versão instalada: <b>Orbe Shell {VERSION}</b> · canal {channel}. A verificação consulta os releases publicados do projeto.</p>}
+        {state === 'checking' && <p className="muted">Consultando servidor de atualizações…</p>}
+        {state === 'latest' && remote && <p>Você está atualizado. Última versão publicada no canal {channel}: <b>{remote.version}</b>.</p>}
+        {state === 'ready' && remote && <>
+          <p><b>Orbe Shell {remote.version}</b> disponível (canal {remote.channel}).</p>
+          <p className="muted">O instalador será baixado da URL oficial e salvo na pasta Downloads. A instalação só começa com sua confirmação explícita abaixo.</p>
+          <label className="confirm-row"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Confirmo que desejo baixar e instalar {remote.version}</label>
+          <button className="pill" onClick={install} disabled={!confirmed}>Baixar e instalar {remote.version}</button>
+        </>}
+        {state === 'installing' && <><div className="prog"><motion.div initial={{ width: 0 }} animate={{ width: '92%' }} transition={{ duration: 8 }} /></div><p className="muted">Baixando instalador e iniciando a instalação…</p></>}
+        {state === 'done' && <p>Instalador iniciado. Conclua a instalação na janela do instalador e reabra o Orbe Shell.</p>}
+        {(state === 'error' || err) && state !== 'idle' && <div className="panel-err">{err}</div>}
       </div>
-      <div className="upd-actions">{state === 'idle' && <button className="pill" onClick={check}>Verificar atualizações</button>}</div>
+      <div className="upd-actions">
+        {(state === 'idle' || state === 'error') && <button className="pill" onClick={check} disabled={!native.IS_TAURI}>Verificar atualizações</button>}
+        {!native.IS_TAURI && <p className="muted">Disponível apenas no aplicativo nativo.</p>}
+      </div>
     </div>
   )
 }
 
+// ── Continuity REAL: verifica a saúde dos módulos consultando o backend ──
 function ContinuityPanel() {
   const log = useShellStore((s) => s.continuityLog)
   const push = useShellStore((s) => s.pushContinuity)
   const recover = useShellStore((s) => s.emergencyRecovery)
+  const [health, setHealth] = useState(null)
+  const [checking, setChecking] = useState(false)
+
+  const verify = async () => {
+    setChecking(true)
+    const results = []
+    const probe = async (label, fn) => {
+      try { await fn(); results.push([label, true, '']) }
+      catch (e) { results.push([label, false, String(e)]) }
+    }
+    await probe('Sistema', native.sysInfo)
+    await probe('Processos', native.listProcesses)
+    await probe('Arquivos', () => native.readDir(''))
+    await probe('Volume', native.audioState)
+    await probe('Papel de parede', native.currentWallpaper)
+    const failed = results.filter(([, ok]) => !ok)
+    setHealth(results)
+    push(failed.length === 0
+      ? `Verificação de saúde concluída — ${results.length} módulos operacionais.`
+      : `Verificação: ${failed.length} módulo(s) indisponível(is): ${failed.map(([n]) => n).join(', ')}.`)
+    setChecking(false)
+  }
+
   return (
     <div className="body-pad">
       <h3>Orbe Continuity</h3>
-      <p className="muted">Monitora componentes do shell. Se um widget ou painel falhar, o Orbe tenta restaurá-lo sem perder o estado da interface — recorrendo ao desktop nativo do Windows apenas quando necessário.</p>
+      <p className="muted">Monitora componentes do shell. Se um widget ou painel falhar, o Orbe registra o evento e restaura o estado da interface — recorrendo ao desktop nativo do Windows apenas quando necessário.</p>
       <div className="cont-grid">
-        <button className="pill" onClick={() => push('Verificação de saúde executada — todos os módulos OK.')}>Executar verificação</button>
-        <button className="pill warn" onClick={() => push('Falha simulada detectada no widget Clima → restaurado automaticamente.')}>Simular falha de widget</button>
+        <button className="pill" onClick={verify} disabled={checking}>{checking ? 'Verificando…' : 'Executar verificação de saúde'}</button>
         <button className="pill danger" onClick={recover}>Recuperação de emergência</button>
       </div>
+      {health && (
+        <div className="cont-health">
+          {health.map(([name, ok, msg]) => (
+            <div key={name} className={`ch-row ${ok ? 'ok' : 'bad'}`}>
+              <Icon name={ok ? 'shield' : 'close'} size={13} /><span>{name}</span><small>{ok ? 'Operacional' : msg}</small>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="cont-log">
         {log.length === 0 && <div className="muted">Nenhum evento registrado.</div>}
         {log.slice().reverse().map((e, i) => <div key={i} className="cont-ev"><span className="cont-time">{new Date(e.t).toLocaleTimeString('pt-BR')}</span>{e.msg}</div>)}
@@ -140,12 +406,23 @@ function ContinuityPanel() {
 }
 
 function AboutPanel() {
+  const [info, setInfo] = useState(null)
+  useEffect(() => { let a = true; native.sysInfo().then((i) => a && setInfo(i)).catch(() => {}); return () => { a = false } }, [])
   return (
     <div className="body-pad about">
       <div className="about-orbe"><span className="orbe-core big" /></div>
       <h2>Orbe Shell</h2>
-      <p className="muted">Protótipo 0.4 · experiência de desktop premium para Windows</p>
+      <p className="muted">Versão {VERSION} · aplicativo nativo Tauri · experiência de desktop premium para Windows</p>
       <p>Beleza, fluidez, desempenho, inteligência e liberdade de personalização funcionando juntos.</p>
+      {info && (
+        <div className="about-sys glass">
+          <div><span>Sistema</span><b>{info.os} {info.version}</b></div>
+          <div><span>Computador</span><b>{info.hostname}</b></div>
+          <div><span>Processadores</span><b>{info.cpus} threads</b></div>
+          <div><span>Memória</span><b>{info.ramTotalGb > 0 ? `${info.ramTotalGb.toFixed(1)} GB` : 'indisponível nesta plataforma'}</b></div>
+          <div><span>Modo</span><b>{native.IS_TAURI ? 'Nativo (Tauri)' : 'Web (desenvolvimento)'}</b></div>
+        </div>
+      )}
     </div>
   )
 }
@@ -156,7 +433,8 @@ function Switch({ on, onChange }) {
 
 // ── Janela genérica com arrasto, redimensionamento, snap e Genie ───
 export function Window({ win }) {
-  const app = APPS[win.appId] || { name: win.appId, color1: '#666', color2: '#333', glyph: 'orb' }
+  const nativeApps = useShellStore((s) => s.nativeApps)
+  const app = findAppById(win.appId, nativeApps) || internalApp('about')
   const focused = useShellStore((s) => s.focused === win.id)
   const store = useShellStore.getState()
   const ref = useRef(null)
@@ -187,7 +465,7 @@ export function Window({ win }) {
         if (z !== snapHint) { setSnapHint(z); store.setSnapping(win.id, z) }
       })
     }
-    const up = (ev) => {
+    const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       if (snapHint) store.snapWindow(win.id, snapHint)
@@ -226,7 +504,7 @@ export function Window({ win }) {
 
   useEffect(() => {
     if (!win.genie) controls.start({ scaleX: 1, scaleY: 1, x: 0, y: 0, skewX: 0, opacity: 1, transition: { type: 'spring', stiffness: 320, damping: 26 } })
-  }, [win.minimized, win.genie])
+  }, [win.minimized, win.genie, controls])
 
   return (
     <AnimatePresence>
@@ -253,7 +531,7 @@ export function Window({ win }) {
               <button className="close" title="Fechar" onClick={() => store.closeWindow(win.id)}><Icon name="close" size={13} /></button>
             </div>
           </div>
-          <div className="win-body"><AppBody appId={win.appId} win={win} /></div>
+          <div className="win-body"><AppBody appId={win.appId} /></div>
           {!win.maximized && <div className="resize-handle" onPointerDown={startResize} />}
         </motion.div>
       )}
