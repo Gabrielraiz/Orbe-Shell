@@ -1,77 +1,94 @@
-# Orbe Shell — Protótipo 0.4
+# Orbe Shell 1.1.0.2
 
-Substituto visual completo da experiência de desktop do Windows: ambiente premium,
-extremamente fluido, inteligente e totalmente personalizável, com identidade própria.
+Aplicativo nativo de shell para Windows construído com **Tauri 2 (Rust)** e **React 19**.
+Substitui a experiência visual do desktop por um ambiente Liquid Glass completo — Dock,
+Menu Iniciar, janelas com snap e efeito Genie, widgets, Studio de personalização — usando
+integrações reais com o sistema operacional (atalhos .lnk, processos, volume, papel de
+parede, registro). Nenhum painel exibe dados simulados: fora do app nativo cada módulo
+declara explicitamente que exige o backend Rust.
 
 **Filosofia:** beleza, fluidez, desempenho, inteligência e liberdade de personalização
 funcionando juntos — um sistema que não apenas pareça moderno, mas que seja agradável
 de utilizar em cada interação.
 
-## 🚀 Como testar agora
+## Requisitos (Windows)
 
-```bash
+- Node.js >= 18 (LTS recomendado)
+- Rust (rustup) com toolchain `stable-msvc`
+- Visual Studio Build Tools 2022 (workload "Desktop development with C++")
+- WebView2 Runtime (presente no Windows 11; instalador automático no Windows 10)
+
+## Como rodar
+
+```powershell
 cd orbe-shell
-npm install        # já instalado neste workspace
-npm run dev        # abre em http://localhost:5173
+npm install
+npm run tauri:dev        # desenvolvimento (hot reload)
+npm run tauri:build      # gera o instalador .exe (NSIS) em src-tauri/target/release/bundle
 ```
 
-Ou a versão de produção compilada: `npm run build && npm run preview`
+Atalho recomendado — script de verificação completa que instala dependências, roda os
+testes unitários, oxlint, vite build, cargo check e grava um relatório `.log` datado em
+`scripts/logs/`:
 
-## ✨ Os 12 pilares implementados no protótipo
+```powershell
+.\scripts\dev.ps1            # diagnóstico completo
+.\scripts\dev.ps1 -Tests     # + testes unitários detalhados
+.\scripts\dev.ps1 -Dev       # diagnóstico e abre o aplicativo
+.\scripts\dev.ps1 -Build     # diagnóstico e gera o instalador
+.\scripts\dev.ps1 -Full      # tudo
+```
 
-| # | Pilar | Onde testar |
-|---|-------|-------------|
-| 1 | **Liquid Glass Premium** — interface escura translúcida, desfoque real, cantos arredondados, cores dinâmicas por papel de parede | Tudo visível; troque o wallpaper no Studio |
-| 2 | **Animações fluidas** — molas (spring), efeito Genie ao minimizar, velocidade global ajustável | Minimizar janela (botão ou duplo-clique na barra de título) |
-| 3 | **Dock flutuante inteligente** — magnificação por proximidade, ocultação automática, reordenação por arrastar, menu de contexto (botão direito) | Base da tela |
-| 4 | **Menu Iniciar adaptável** — modos Compacto/Completo/Inteligente, pesquisa integrada; **tecla Windows abre/fecha** | Tecla `Meta`/Windows ou orbe no Dock |
-| 5 | **Gerenciamento avançado de janelas** — snap nas bordas/cantos (esq., dir., topo, 4 quadrantes), maximizar, múltiplas áreas de trabalho | Arraste a janela até as bordas |
-| 6 | **Área de trabalho personalizável** — ícones arrastáveis (posição salva), widgets (relógio, clima, música, monitor), menu de contexto flutuante (botão direito no fundo) | Fundo da tela |
-| 7 | **Orbe Studio** — central de personalização: cores, glass (transparência/desfoque), dock, animações, modos, widgets | Abra pelo Dock ou menu de contexto |
-| 8 | **Desempenho e compatibilidade** — modo "Reduzir efeitos", persistência de preferências, otimizações de GPU via CSS | Studio → Glass / Configurações |
-| 9 | **Modos inteligentes** — perfis Gamer, Trabalho e Inteligente alteram Dock e favoritos do Menu Iniciar | Central de controle (topo) ou Studio |
-| 10 | **Orbe Continuity** — log de eventos, verificação de saúde, simulação de falha de widget e recuperação de emergência sem perder estado | Menu de contexto → Orbe Continuity |
-| 11 | **Orbe Update Center** — canais Estável/Beta/Experimental, aviso antes de instalar, opção de reverter versão | Menu de contexto → Verificar atualizações |
-| 12 | **Segurança e estabilidade** — arquitetura modular (cada componente isolado no store), recuperação de emergência disponível em todos os menus críticos | Dock → botão direito → Recuperação |
+## Os 12 pilares — agora como funcionalidades reais
 
-## ⌨️ Atalhos
+| # | Pilar | Status em 1.1.0.2 |
+|---|-------|-------------------|
+| 1 | Liquid Glass Premium | Escuro translúcido, blur real, cores dinâmicas extraídas do papel de parede ativo |
+| 2 | Animações fluidas | Springs do Framer Motion, efeito Genie ao minimizar, velocidade global ajustável no Studio |
+| 3 | Dock inteligente | Magnificação, ocultação automática, reordenação por arrastar, menus de contexto, enriquecido com apps reais do SO |
+| 4 | Menu Iniciar adaptável | Modos Compacto/Completo/Inteligente, pesquisa sobre atalhos reais do Windows, tecla Windows abre/fecha |
+| 5 | Gerenciamento de janelas | Snap por bordas/cantos com preview, maximizar, múltiplas áreas de trabalho |
+| 6 | Área de trabalho | Ícones arrastáveis com posição persistida, widgets reais (relógio, clima Open-Meteo, música local, monitor CPU/RAM via perf_stats) |
+| 7 | Orbe Studio | Cores, glass, dock, animações, modos e widgets — tudo persistido |
+| 8 | Desempenho | Redução automática de efeitos, GPU via CSS, otimizações por hardware |
+| 9 | Modos inteligentes | Gamer / Trabalho / Inteligente alteram Dock e favoritos |
+| 10 | Orbe Continuity | Verificação de saúde real sondando cada comando Rust; recuperação de emergência restaura o estado da interface |
+| 11 | Update Center | Consulta releases via PowerShell/HTTPS, confirmação explícita antes de baixar e executar o instalador |
+| 12 | Segurança | Permissões Tauri por capability, proteção de processos críticos, fallback do Explorer via registro com backup e rollback |
 
-- `Windows/Meta` — abre/fecha o Menu Orbe
-- `Esc` — fecha overlays
-- Duplo-clique na barra de título — minimiza com efeito Genie
-- Arrastar janela para bordas/topo/cantos — encaixe inteligente
-- Botão direito no Dock — menu de contexto completo
-- Botão direito na área de trabalho — menu flutuante do shell
+## Módulos nativos (comandos Rust)
 
-## 🗂 Estrutura
+- `sys_info`, `battery_info`, `perf_stats` — sistema, bateria, CPU/RAM em tempo real
+- `app_catalog`, `launch_app`, `resolve_shortcut` — atalhos .lnk/.desktop do usuário e todos os programas
+- `list_processes`, `end_process` — gerenciador de tarefas com memória real (Working Set) e bloqueio de processos críticos
+- `read_dir_entries`, `read_text_file`, `write_text_file`, `delete_path` — explorador restrito à pasta do usuário
+- `set_wallpaper`, `current_wallpaper` — SystemParametersInfoW
+- `audio_state`, `audio_set_volume`, `audio_toggle_mute` — Endpoint Volume API (COM)
+- `check_latest_version`, `download_and_run_installer` — atualização distribuída somente HTTPS
+- `set_explorer_fallback`, `get_explorer_fallback` — substituição profunda do shell com rollback automático
+
+## Estrutura
 
 ```
 orbe-shell/
-├── src/
-│   ├── App.jsx                 # shell raiz: boot, tecla Windows, variáveis CSS dinâmicas
-│   ├── store/shellStore.js     # estado global (Zustand + persistência)
-│   ├── lib/apps.js             # catálogo de aplicativos
-│   ├── lib/wallpapers.js       # papéis de parede + paletas de cores dinâmicas
-│   └── components/
-│       ├── MenuBar.jsx         # barra superior estilo macOS
-│       ├── Dock.jsx            # dock com magnificação, drag & context menu
-│       ├── StartMenu.jsx       # menu iniciar em 3 modos + pesquisa
-│       ├── Window.jsx          # janelas: snap, resize, Genie + Orbe Studio
-│       ├── Desktop.jsx         # ícones arrastáveis + widgets
-│       ├── ControlCenter.jsx   # central de controle + Mission Control leve
-│       └── AppIcon.jsx, icons/ # ícones nativos vetoriais
+├── scripts/dev.ps1          # verificação/testes/diagnóstico com log
+├── tests/core.test.mjs      # testes unitários (node --test tests/)
+├── src/                     # frontend React (store, componentes, ponte native.js)
+└── src-tauri/               # backend Rust
+    ├── Cargo.toml
+    ├── tauri.conf.json
+    ├── capabilities/        # permissões por componente
+    └── src/commands/        # system, apps, fs, processes, wallpaper, audio, update, shell
 ```
 
-Stack: **React 19 · Vite · Zustand · Framer Motion**
+Stack: **React 19 · Vite · Zustand · Framer Motion · Tauri 2 · Rust (windows-rs)**
 
-## 🛣 Roadmap para produção (não concluído no protótipo)
+## Roadmap
 
-- Substituição profunda do Explorer (shell real via API Win32/UWP)
-- Orbe Window Bridge — efeitos em aplicativos externos respeitando limitações
-- Mecanismo Continuity real (monitoramento de processos com fallback ao desktop nativo)
-- Atualizações distribuídas com rollback assinado
-- Suporte a toque e otimizações automáticas por hardware
-- Alvo: Windows 11+ (Windows 10 opcional)
+- Orbe Window Bridge: efeitos e snap em aplicativos externos (WinEvent hooks)
+- Substituição completa do Explorer como shell padrão (opção segura no Continuity)
+- Rollback assinado de atualizações e canais beta/experimental com checksum
+- Suporte a toque e gestos; otimizações automáticas por hardware
 
-> Protótipo web interativo — demonstra a experiência completa de UI/UX. A integração
-> nativa com o Windows é a próxima fase de engenharia.
+> Versão 1.1.0.2 — foco: correções de build/lint, sincronização de versão, módulos reais
+> (volume, calculadora sem eval, explorer, tarefas, update) e script de diagnóstico.

@@ -55,7 +55,9 @@ function FilesPanel() {
     setBusy(false)
   }
 
-  useEffect(() => { if (!entries && !err) go('') }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!entries && !err) { const t = setTimeout(() => go(''), 0); return () => clearTimeout(t) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openEntry = async (en) => {
     if (en.isDir) return go(en.path)
@@ -142,10 +144,15 @@ function TasksPanel() {
     catch (e) { setErr(String(e)) }
   }
   useEffect(() => {
-    if (!native.IS_TAURI) { setErr('Gerenciador de tarefas exige o app nativo. Rode com "npm run tauri:dev".'); return }
-    refresh()
-    const t = auto ? setInterval(refresh, 3000) : null
-    return () => { if (t) clearInterval(t) }
+    if (!native.IS_TAURI) {
+      const t = setTimeout(() => setErr('Gerenciador de tarefas exige o app nativo. Rode com "npm run tauri:dev".'), 0)
+      return () => clearTimeout(t)
+    }
+    // Primeira leitura tambem adiada: setState nunca ocorre sincronamente no efeito.
+    let alive = true
+    const first = setTimeout(() => { refresh().catch(() => {}) }, 0)
+    const timer = auto ? setInterval(() => { if (alive) refresh().catch(() => {}) }, 3000) : null
+    return () => { alive = false; clearTimeout(first); if (timer) clearInterval(timer) }
   }, [auto]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const kill = async (p) => {
@@ -262,7 +269,7 @@ function NotesPanel() {
 
   useEffect(() => {
     let alive = true
-    if (!native.IS_TAURI) { setStatus('Salvando localmente neste navegador.'); return }
+    if (!native.IS_TAURI) { const t = setTimeout(() => setStatus('Salvando localmente neste navegador.'), 0); return () => clearTimeout(t) }
     (async () => {
       try {
         const home = (await native.sysInfo()).home
