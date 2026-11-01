@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { DEFAULT_DOCK } from '../lib/apps'
+import { DEFAULT_DOCK, INTERNAL_APPS, fromNative } from '../lib/apps'
 import { wallpaperById } from '../lib/wallpapers'
+import { appCatalog, launchApp, IS_TAURI } from '../lib/native'
 
 let nextId = 100
 const uid = () => `w${nextId++}`
@@ -41,6 +42,24 @@ export const useShellStore = create(
       setAutoHideDock: (v) => set({ autoHideDock: v }),
       setShowDesktopIcons: (v) => set({ showDesktopIcons: v }),
 
+      // ── Aplicativos reais do sistema (Tauri) ─────────────────────
+      nativeApps: [],   // itens de UI derivados dos atalhos reais do SO
+      nativeStatus: IS_TAURI ? 'loading' : 'web', // loading | ok | error | web
+      loadNativeApps: async () => {
+        if (!IS_TAURI) return set({ nativeStatus: 'web' })
+        try {
+          const list = await appCatalog()
+          const ui = list.map((e) => ({ ...fromNative(e), native: e }))
+          set({ nativeApps: ui, nativeStatus: 'ok' })
+        } catch (e) {
+          get().pushContinuity(`Catálogo de aplicativos indisponível: ${e}`)
+          set({ nativeStatus: 'error' })
+        }
+      },
+
+      // Resolve qualquer id: interno ("files") ou nativo ("sys:xxx")
+      findApp: (id) => INTERNAL_APPS[id] || get().nativeApps.find((a) => a.id === id) || null,
+
       // ── Dock ─────────────────────────────────────────────────────
       dockApps: DEFAULT_DOCK,
       dockAdd: (appId) => set((s) => (s.dockApps.includes(appId) ? s : { dockApps: [...s.dockApps, appId] })),
@@ -57,14 +76,14 @@ export const useShellStore = create(
       mode: 'smart', // work | gamer | smart
       setMode: (m) =>
         set((s) => {
-          if (m === 'gamer') return { mode: m, dockApps: ['explorer', 'gamepad', 'music', 'edge', 'settings'] }
+          if (m === 'gamer') return { mode: m, dockApps: ['files', 'terminal', 'tasks', 'notes', 'settings'] }
           if (m === 'work')
-            return { mode: m, dockApps: ['explorer', 'editor', 'mail', 'calendar', 'notes', 'calculator', 'settings'] }
+            return { mode: m, dockApps: ['files', 'calculator', 'notes', 'tasks', 'settings', 'studio'] }
           return { mode: m, dockApps: DEFAULT_DOCK }
         }),
 
       // ── Áreas de trabalho virtuais ───────────────────────────────
-      desktops: ['Principal', 'Trabalho', 'Jogos'],
+      desktops: ['Principal'],
       currentDesktop: 0,
       switchDesktop: (i) => set((s) => ({ currentDesktop: Math.max(0, Math.min(i, s.desktops.length - 1)) })),
       addDesktop: () => set((s) => ({ desktops: [...s.desktops, `Área ${s.desktops.length + 1}`] })),
@@ -91,6 +110,22 @@ export const useShellStore = create(
 
       openApp: (appId) => {
         const s = get()
+        const app = s.findApp(appId)
+        if (!app) {
+          s.pushContinuity(`Aplicativo não encontrado: ${appId}`)
+          return
+        }
+        // Aplicativo real do sistema → lança via backend nativo (sem janela falsa)
+        if (app.kind === 'system') {
+          if (!IS_TAURI) {
+            s.pushContinuity('Abrir aplicativos do sistema exige o app nativo (Tauri). Recarregue com "npm run tauri:dev".')
+            return
+          }
+          launchApp(app.native.target)
+            .then(() => s.pushContinuity(`Iniciado: ${app.name}`))
+            .catch((e) => s.pushContinuity(`Falha ao iniciar ${app.name}: ${e}`))
+          return
+        }
         const existing = s.windows.find((w) => w.appId === appId && !w.minimized)
         if (existing) {
           set({ focused: existing.id })
