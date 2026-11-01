@@ -76,7 +76,7 @@ pub fn set_explorer_fallback(enable: bool) -> R<String> {
     #[cfg(not(windows))]
     {
         Ok(if enable {
-            "A troca profunda de shell só está disponível no Windows. Modo simulado salvo para desenvolvimento."
+            "A troca profunda de shell só está disponível no Windows; nada foi alterado neste sistema."
                 .to_string()
         } else {
             "Fallback desativado.".to_string()

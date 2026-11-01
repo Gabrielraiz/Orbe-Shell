@@ -10,15 +10,19 @@ mod commands;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(
             tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 Some(vec!["--hidden"]),
             ),
         )
+        .manage(commands::system::PerfState::default())
         .invoke_handler(tauri::generate_handler![
             commands::system::sys_info,
             commands::system::battery_info,
+            commands::system::perf_stats,
             commands::processes::list_processes,
             commands::processes::end_process,
             commands::apps::app_catalog,

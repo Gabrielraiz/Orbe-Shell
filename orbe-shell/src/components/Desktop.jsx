@@ -1,37 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useShellStore } from '../store/shellStore'
-import { APPS } from '../lib/apps'
-import { AppIcon } from './AppIcon'
+import { internalApp } from '../lib/apps'
 import { Icon } from './icons/Icons'
+import { AppIcon } from './AppIcon'
+import * as native from '../lib/native'
 
-// Área de trabalho: ícones arrastáveis + widgets flutuantes
-const DESKTOP_ICONS = [
-  { id: 'pc', name: 'Este Computador', app: 'explorer' },
-  { id: 'trash', name: 'Lixeira', app: 'security' },
-  { id: 'docs', name: 'Documentos', app: 'files' },
-  { id: 'proj', name: 'Projetos Orbe', app: 'editor' },
-  { id: 'dl', name: 'Downloads', app: 'explorer' },
+// Área de trabalho: ícones que apontam para pastas REAIS da conta do usuário.
+// Duplo clique abre a pasta no explorador interno (ou no gerenciador nativo).
+const REAL_DIRS = [
+  { id: 'home', name: 'Pasta do Usuário', dir: '' },
+  { id: 'docs', name: 'Documentos', dir: 'Documents' },
+  { id: 'dl', name: 'Downloads', dir: 'Downloads' },
+  { id: 'desk', name: 'Área de Trabalho', dir: 'Desktop' },
+  { id: 'pics', name: 'Imagens', dir: 'Pictures' },
+]
+const WEB_ICONS = [
+  { id: 'files', name: 'Explorador de Arquivos', app: 'files' },
+  { id: 'notes', name: 'Notas', app: 'notes' },
+  { id: 'settings', name: 'Configurações', app: 'settings' },
 ]
 
 export function Desktop() {
   const show = useShellStore((s) => s.showDesktopIcons)
   const openApp = useShellStore((s) => s.openApp)
+  const pushContinuity = useShellStore((s) => s.pushContinuity)
+  const icons = native.IS_TAURI ? REAL_DIRS : WEB_ICONS
   const [pos, setPos] = useState(() => {
-    const saved = localStorage.getItem('orbe-desktop-icons')
-    if (saved) return JSON.parse(saved)
+    try {
+      const saved = JSON.parse(localStorage.getItem('orbe-desktop-icons') || 'null')
+      if (saved) return saved
+    } catch { /* dados corrompidos: recomeça */ }
     const o = {}
-    DESKTOP_ICONS.forEach((ic, i) => { o[ic.id] = { x: 26, y: 60 + i * 96 } })
+    icons.forEach((ic, i) => { o[ic.id] = { x: 26, y: 60 + i * 96 } })
     return o
   })
   const [drag, setDrag] = useState(null)
-
 
   useEffect(() => { localStorage.setItem('orbe-desktop-icons', JSON.stringify(pos)) }, [pos])
 
   const startMove = (id, e) => {
     e.preventDefault()
-    setDrag({ id, sx: e.clientX, sy: e.clientY, ox: pos[id].x, oy: pos[id].y, moved: false })
+    setDrag({ id, sx: e.clientX, sy: e.clientY, ox: pos[id]?.x ?? 26, oy: pos[id]?.y ?? 60, moved: false })
   }
   useEffect(() => {
     if (!drag) return
@@ -46,14 +56,23 @@ export function Desktop() {
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
   }, [drag?.id])
 
+  const activate = async (ic) => {
+    if (drag?.moved) return
+    if (ic.app) return openApp(ic.app)
+    // Pasta real: abre no explorador interno já na pasta correta
+    openApp('files')
+    window.dispatchEvent(new CustomEvent('orbe:open-dir', { detail: ic.dir }))
+    pushContinuity(`Abrindo "${ic.name}" no Explorador de Arquivos.`)
+  }
+
   if (!show) return null
   return (
     <div className="desktop-icons">
-      {DESKTOP_ICONS.map((ic) => (
+      {icons.map((ic) => (
         <div key={ic.id} className="dicon" style={{ left: pos[ic.id]?.x, top: pos[ic.id]?.y }}
           onPointerDown={(e) => startMove(ic.id, e)}
-          onDoubleClick={() => !drag?.moved && openApp(ic.app)}>
-          <AppIcon app={APPS[ic.app]} size={44} radius={12} />
+          onDoubleClick={() => activate(ic)}>
+          <AppIcon app={internalApp('files')} size={44} radius={12} />
           <span>{ic.name}</span>
         </div>
       ))}
@@ -61,56 +80,139 @@ export function Desktop() {
   )
 }
 
-// Widgets flutuantes no canto superior direito
+// Widgets flutuantes — todos com dados reais ou honestamente indisponíveis
 export function Widgets() {
   const w = useShellStore((s) => s.widgets)
-  const [now, setNow] = useState(new Date())
-  const [cpu, setCpu] = useState(12)
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    const c = setInterval(() => setCpu(8 + Math.round(Math.random() * 30)), 1500)
-    return () => { clearInterval(t); clearInterval(c) }
-  }, [])
-
   return (
     <div className="widgets">
-      {w.clock && (
-        <motion.div className="widget glass" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
-          <div className="w-time">{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
-          <div className="w-sub">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-        </motion.div>
-      )}
-      {w.weather && (
-        <motion.div className="widget glass" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 }}>
-          <div className="w-row"><Icon name="sun" size={22} color="#ffd166" /><b className="w-temp">23°</b></div>
-          <div className="w-sub">Parcialmente nublado · São Paulo</div>
-        </motion.div>
-      )}
+      {w.clock && <ClockWidget />}
+      {w.weather && <WeatherWidget />}
       {w.music && <MusicWidget />}
-      {w.monitor && (
-        <motion.div className="widget glass" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}>
-          <div className="w-sub">Desempenho</div>
-          <div className="bar"><span style={{ width: `${cpu}%` }} /></div>
-          <div className="w-sub small">CPU {cpu}% · GPU 7% · 120 fps alvo</div>
-        </motion.div>
-      )}
+      {w.monitor && <MonitorWidget />}
     </div>
   )
 }
 
+function ClockWidget() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  return (
+    <motion.div className="widget glass" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
+      <div className="w-time">{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+      <div className="w-sub">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+    </motion.div>
+  )
+}
+
+// Clima REAL via Open-Meteo (sem chave de API) + geolocalização do navegador.
+function WeatherWidget() {
+  const [data, setData] = useState({ phase: 'idle' })
+  const fetchFor = (lat, lon) => {
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,wind_speed_10m&timezone=auto`)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+      .then((j) => setData({
+        phase: 'ok',
+        temp: Math.round(j.current.temperature_2m),
+        wind: Math.round(j.current.wind_speed_10m),
+        desc: codeToText(j.current.weather_code),
+        place: `${j.timezone}`,
+      }))
+      .catch((e) => setData({ phase: 'error', msg: `Sem conexão com a estação: ${e}` }))
+  }
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      // fallback honesto: sem permissão de GPS, usa São Paulo como referência fixa
+      fetchFor(-23.55, -46.63)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (p) => fetchFor(p.coords.latitude.toFixed(2), p.coords.longitude.toFixed(2)),
+      () => fetchFor(-23.55, -46.63),
+      { timeout: 8000 }
+    )
+  }, [])
+  const map = { idle: ['—', 'Consultando…'], ok: [`${data.temp}°`, `${data.desc} · vento ${data.wind} km/h`], error: ['—', data.msg] }
+  const [big, sub] = map[data.phase]
+  return (
+    <motion.div className="widget glass" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 }}>
+      <div className="w-row"><Icon name="sun" size={22} color="#ffd166" /><b className="w-temp">{big}</b></div>
+      <div className="w-sub">{sub}</div>
+    </motion.div>
+  )
+}
+
+function codeToText(c) {
+  if (c === 0) return 'Céu limpo'
+  if (c <= 2) return 'Parcialmente nublado'
+  if (c === 3) return 'Nublado'
+  if (c <= 48) return 'Névoa'
+  if (c <= 67) return 'Chuva'
+  if (c <= 77) return 'Neve'
+  if (c <= 82) return 'Pancadas de chuva'
+  if (c <= 99) return 'Tempestade'
+  return '—'
+}
+
+// Player local: reproduz arquivos de áudio que o USUÁRIO escolher (dialog real).
 function MusicWidget() {
+  const audioRef = useRef(null)
+  const [track, setTrack] = useState(null)
   const [playing, setPlaying] = useState(false)
-  const [track, setTrack] = useState(0)
-  const tracks = ['Órbita Azul — Nebula Drive', 'Vidro Líquido — Soft Static', 'Aurora — Night Terminal']
+  const [err, setErr] = useState(null)
+
+  const pick = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const file = await open({ multiple: false, filters: [{ name: 'Áudio', extensions: ['mp3', 'ogg', 'wav', 'flac', 'm4a'] }] })
+      if (!file) return
+      // Converte caminho em URL de recurso nativo reconhecida pelo WebView
+      const { convertFileSrc } = await import('@tauri-apps/api/core')
+      setTrack({ path: file, url: convertFileSrc(file) })
+      setPlaying(false); setErr(null)
+    } catch (e) {
+      setErr('Seletor de arquivo exige o app nativo.')
+    }
+  }
+
+  const toggle = async () => {
+    const a = audioRef.current
+    if (!a || !track) return pick()
+    if (playing) { a.pause(); setPlaying(false) }
+    else { try { await a.play(); setPlaying(true) } catch (e) { setErr(String(e)) } }
+  }
+
   return (
     <motion.div className="widget glass music" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}>
-      <div className="w-sub">Tocando agora</div>
-      <div className="m-track">{tracks[track]}</div>
-      <div className="m-bar"><motion.span animate={{ width: playing ? '100%' : '30%' }} transition={{ duration: playing ? 20 : 0.3, ease: 'linear' }} /></div>
+      <div className="w-sub">Player local</div>
+      <div className="m-track">{track ? track.path.split(/[\\/]/).pop() : 'Nenhum arquivo escolhido'}</div>
+      {track && <audio ref={audioRef} src={track.url} onEnded={() => setPlaying(false)} />}
+      {err && <div className="w-sub">{err}</div>}
       <div className="m-ctrls">
-        <button onClick={() => setTrack((t) => (t + 2) % 3)}><Icon name="prev" size={14} /></button>
-        <button className="play" onClick={() => setPlaying(!playing)}><Icon name={playing ? 'min' : 'play'} size={14} /></button>
-        <button onClick={() => setTrack((t) => (t + 1) % 3)}><Icon name="next" size={14} /></button>
+        <button onClick={pick} title="Escolher arquivo de áudio"><Icon name="folder" size={14} /></button>
+        <button className="play" onClick={toggle}><Icon name={playing ? 'min' : 'play'} size={14} /></button>
+      </div>
+    </motion.div>
+  )
+}
+
+// Monitor REAL: perf_stats do backend (CPU delta + memória física)
+function MonitorWidget() {
+  const [perf, setPerf] = useState(null)
+  const [err, setErr] = useState(null)
+  useEffect(() => {
+    if (!native.IS_TAURI) { setErr('Dados de desempenho exigem o app nativo.'); return }
+    let alive = true
+    const tick = () => native.perfStats().then((p) => alive && setPerf(p)).catch((e) => alive && setErr(String(e)))
+    tick()
+    const t = setInterval(tick, 2000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
+  return (
+    <motion.div className="widget glass" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}>
+      <div className="w-sub">Desempenho</div>
+      <div className="bar"><span style={{ width: `${perf ? Math.round(perf.cpuPercent) : 0}%` }} /></div>
+      <div className="w-sub small">
+        {err ? err : perf ? `CPU ${perf.cpuPercent.toFixed(0)}% · RAM ${(perf.memUsedMb / 1024).toFixed(1)}/${(perf.memTotalMb / 1024).toFixed(0)} GB` : 'Lendo contadores do sistema…'}
       </div>
     </motion.div>
   )

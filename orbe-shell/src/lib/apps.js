@@ -1,27 +1,73 @@
-// Catálogo de aplicativos do Orbe Shell (protótipo)
-// Em produção, estes seriam os ícones nativos reais dos aplicativos instalados.
+// Orbe Shell 1.0 — aplicativos REAIS do sistema.
+// Em modo nativo (Tauri), o catálogo vem dos atalhos reais do Windows/Linux e
+// cada item abre o aplicativo de verdade via backend Rust.
+// Em modo web (desenvolvimento sem Tauri) não há apps instalados acessíveis:
+// a interface mostra apenas as ferramentas internas do próprio shell, que são
+// genuinamente funcionais — nada é inventado.
 
-export const APPS = {
-  explorer: { id: 'explorer', name: 'Explorador de Arquivos', color1: '#ffc861', color2: '#f0a02e', glyph: 'folder' },
-  edge: { id: 'edge', name: 'Orbe Browser', color1: '#37d5e0', color2: '#2b7ff0', glyph: 'globe' },
-  store: { id: 'store', name: 'Loja Orbe', color1: '#54c8ff', color2: '#2f6fed', glyph: 'bag' },
-  settings: { id: 'settings', name: 'Configurações', color1: '#9aa4b2', color2: '#5b6472', glyph: 'gear' },
-  studio: { id: 'studio', name: 'Orbe Studio', color1: '#c678ff', color2: '#6d4aff', glyph: 'orb' },
-  terminal: { id: 'terminal', name: 'Terminal', color1: '#3a3f4b', color2: '#15171d', glyph: 'term' },
-  files: { id: 'files', name: 'Arquivos', color1: '#ffd166', color2: '#ff9f43', glyph: 'folder' },
-  photos: { id: 'photos', name: 'Fotos', color1: '#7ee8fa', color2: '#ff8fb3', glyph: 'image' },
-  music: { id: 'music', name: 'Música', color1: '#ff6b9d', color2: '#c44569', glyph: 'music' },
-  mail: { id: 'mail', name: 'Correio', color1: '#6ab7ff', color2: '#3f6ad8', glyph: 'mail' },
-  calendar: { id: 'calendar', name: 'Calendário', color1: '#ff7b72', color2: '#e0455e', glyph: 'calendar' },
-  calculator: { id: 'calculator', name: 'Calculadora', color1: '#8ee6a8', color2: '#2fae66', glyph: 'calc' },
-  notes: { id: 'notes', name: 'Notas', color1: '#ffe27a', color2: '#f2b705', glyph: 'note' },
-  editor: { id: 'editor', name: 'Editor de Código', color1: '#6ea8fe', color2: '#3572e0', glyph: 'code' },
-  gamepad: { id: 'gamepad', name: 'Central de Jogos', color1: '#7cf0a0', color2: '#1fa85e', glyph: 'game' },
-  security: { id: 'security', name: 'Segurança Orbe', color1: '#5ad1ff', color2: '#2f7fd8', glyph: 'shield' },
-  update: { id: 'update', name: 'Orbe Update Center', color1: '#9d8cff', color2: '#6655e0', glyph: 'refresh' },
-  continuity: { id: 'continuity', name: 'Orbe Continuity', color1: '#57e6c1', color2: '#1fb08a', glyph: 'pulse' },
+export const VERSION = '1.0.0'
+
+// Ferramentas internas do Orbe (código real, executado dentro do shell)
+export const INTERNAL_APPS = {
+  studio: { id: 'studio', name: 'Orbe Studio', kind: 'internal', color1: '#c678ff', color2: '#6d4aff', glyph: 'sliders' },
+  files: { id: 'files', name: 'Explorador de Arquivos', kind: 'internal', color1: '#ffc861', color2: '#f0a02e', glyph: 'folder' },
+  tasks: { id: 'tasks', name: 'Gerenciador de Tarefas', kind: 'internal', color1: '#5ad1ff', color2: '#2f6fed', glyph: 'pulse' },
+  terminal: { id: 'terminal', name: 'Console do Sistema', kind: 'internal', color1: '#3a3f4b', color2: '#15171d', glyph: 'term' },
+  calculator: { id: 'calculator', name: 'Calculadora', kind: 'internal', color1: '#8ee6a8', color2: '#2fae66', glyph: 'calc' },
+  notes: { id: 'notes', name: 'Notas', kind: 'internal', color1: '#ffe27a', color2: '#f2b705', glyph: 'note' },
+  settings: { id: 'settings', name: 'Configurações do Sistema', kind: 'internal', color1: '#9aa4b2', color2: '#5b6472', glyph: 'gear' },
+  update: { id: 'update', name: 'Central de Atualização', kind: 'internal', color1: '#9d8cff', color2: '#6655e0', glyph: 'refresh' },
+  continuity: { id: 'continuity', name: 'Orbe Continuity', kind: 'internal', color1: '#57e6c1', color2: '#1fb08a', glyph: 'shield' },
+  about: { id: 'about', name: 'Sobre o Orbe Shell', kind: 'internal', color1: '#7ee8fa', color2: '#2b7ff0', glyph: 'orb' },
 }
 
-export const DEFAULT_DOCK = ['explorer', 'edge', 'store', 'mail', 'calendar', 'photos', 'music', 'editor', 'terminal', 'settings', 'studio']
+export function internalApp(id) {
+  return INTERNAL_APPS[id] || null
+}
 
-export const ALL_APPS = Object.values(APPS)
+// Converte um AppEntry real do backend em item de interface.
+const PALETTE = [
+  ['#6ea8fe', '#3572e0'], ['#ff9f6e', '#e0553a'], ['#8ee6a8', '#2fae66'],
+  ['#c69bff', '#7d4ae0'], ['#7ee8fa', '#2ba8c4'], ['#ffb3c7', '#e05c7f'],
+  ['#ffd166', '#df9a1b'], ['#9fb4cc', '#5b7290'],
+]
+
+function hash(s) {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return h
+}
+
+function glyphFor(entry) {
+  const t = ((entry.target || '') + ' ' + (entry.name || '')).toLowerCase()
+  if (/msedge|firefox|chrome|browser|navegador/.test(t)) return 'globe'
+  if (/terminal|cmd|powershell|wt\.exe|bash/.test(t)) return 'term'
+  if (/music|spotify|media|player|wmplayer/.test(t)) return 'music'
+  if (/photo|fotos|image/.test(t)) return 'image'
+  if (/mail|outlook|email|thunderbird/.test(t)) return 'mail'
+  if (/calc/.test(t)) return 'calc'
+  if (/game|jogo|steam|epic|minecraft/.test(t)) return 'game'
+  if (/store|loja/.test(t)) return 'bag'
+  if (/calendar|agenda/.test(t)) return 'calendar'
+  if (/editor|code|notepad|notes|word|write|jetbrains|vscode/.test(t)) return 'note'
+  if (/settings|config|control/.test(t)) return 'gear'
+  return 'app'
+}
+
+export function fromNative(entry) {
+  const [c1, c2] = PALETTE[hash(entry.name) % PALETTE.length]
+  return {
+    id: `sys:${entry.id}`,
+    nativeId: entry.id,
+    name: entry.name,
+    kind: 'system',
+    target: entry.target,
+    source: entry.source,
+    color1: c1,
+    color2: c2,
+    glyph: glyphFor(entry),
+  }
+}
+
+// Dock padrão: ferramentas internas sempre funcionais no Windows e Linux
+export const DEFAULT_DOCK = ['files', 'terminal', 'tasks', 'calculator', 'notes', 'settings', 'studio']
